@@ -118,9 +118,11 @@ input[type=range]{width:100%;accent-color:#c8901c}
 #chatlog .cnt{display:inline-block;margin-left:4px;padding:0 4px;font-size:11px;color:#4a2e10;background:rgba(90,58,16,.14);border-radius:3px;font-variant-numeric:tabular-nums}
 #chat-more{display:block;width:100%;margin:0 0 4px;background:rgba(90,58,16,.12);border:1px dashed rgba(60,40,10,.4);font:12px var(--font);color:#4a2e10;cursor:pointer;padding:2px}
 .m-red{color:var(--msg-red)} .m-blue{color:var(--msg-blue)} .m-green{color:var(--msg-green)}
+#chat.nolog{height:auto}
+#chat.nolog #chatlog{display:none}
 #chatbar{display:flex;background:var(--stone-2);border-top:2px solid var(--stone-0)}
 #chatbar span,#chatbar button{padding:2px 10px;font:12px var(--font);color:#d8c8a8;text-shadow:1px 1px 0 #000;background:none;border:0;border-right:1px solid var(--stone-0);cursor:pointer}
-#chatbar span.on{color:var(--white);background:#7a2d1c;cursor:default}
+#chatbar .on{color:var(--white);background:#7a2d1c;cursor:default}
 /* right-click menu */
 #menu{position:fixed;z-index:20;background:var(--stone-3);border:1px solid #000;min-width:130px;font-size:15px;padding:0 0 2px}
 #menu .hd{background:#000;color:var(--stone-3);padding:1px 4px 2px;font-size:14px}
@@ -222,7 +224,7 @@ body.touch #chatlog{user-select:none;-webkit-user-select:none}
 </div>
 <div id="chat">
   <div id="chatlog"></div>
-  <div id="chatbar"><span class="on">Game</span><button id="menutoggle">Hide menus</button><button id="bagtoggle">Hide pack</button></div>
+  <div id="chatbar"><button class="on" id="logtoggle" title="Hide the game log">Game ▾</button><button id="menutoggle">Hide menus</button><button id="bagtoggle">Hide pack</button></div>
 </div>
 <div id="placebar" hidden><span id="pb-text">Tap the floor to place</span><button class="btn sm" id="pb-rot">Rotate</button><button class="btn sm warn" id="pb-cancel">Cancel</button></div>
 <div id="menu" hidden></div>
@@ -426,7 +428,7 @@ const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
 function freshState(){return{name:randomName(),skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
   stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
   outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -460,7 +462,7 @@ function sanitize(raw,opts={}){
     g.xpRate=[1,2,5].includes(t.xpRate)?t.xpRate:2;g.pixel=[1,2,3,4].includes(t.pixel)?t.pixel:2;
     g.focusMin=int(t.focusMin,5,120,25);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
     g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
-    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;}
+    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;g.hideLog=t.hideLog===true;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
   f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':'island';
   if(isObj(s.pos))f.pos={x:num(s.pos.x,-500,500,0),z:num(s.pos.z,-500,500,3)};
@@ -1007,11 +1009,12 @@ const P=(()=>{
   const rodG=new THREE.Group();rodG.add(rodStick,basic(new THREE.BoxGeometry(.01,1.6,.01),0xf0f0f0,0,-.8,2.08));rodG.rotation.x=.6;rod.add(rodG);
   // an open book: two covers angled into a V with cream pages on top
   const book=new THREE.Group();
-  for(const sx of[-1,1]){const half=new THREE.Group();half.add(mesh(new THREE.BoxGeometry(.24,.035,.34),'#24508a',sx*.12,0,0),mesh(new THREE.BoxGeometry(.21,.05,.31),'#f4ecd8',sx*.115,.03,0));
-    for(let i=0;i<7;i++)half.add(basic(new THREE.BoxGeometry(.15,.004,.012),0x8a7a60,sx*.115,.057,-.12+i*.04));half.rotation.z=sx*.28;book.add(half);}
-  // the page that flips from the right half to the left as you read
-  const flip=new THREE.Group();flip.add(mesh(new THREE.BoxGeometry(.2,.008,.3),'#fbf6e8',.11,.062,0));
-  for(let i=0;i<7;i++)flip.add(basic(new THREE.BoxGeometry(.14,.004,.012),0x8a7a60,.11,.068,-.12+i*.04));flip.visible=false;book.add(flip);
+  // The cover is wider and deeper than the page block on every side, so no page ever pokes past it.
+  for(const sx of[-1,1]){const half=new THREE.Group();half.add(mesh(new THREE.BoxGeometry(.26,.035,.38),'#24508a',sx*.13,0,0),mesh(new THREE.BoxGeometry(.21,.04,.31),'#f4ecd8',sx*.12,.025,0));
+    for(let i=0;i<7;i++)half.add(basic(new THREE.BoxGeometry(.14,.004,.012),0x8a7a60,sx*.12,.047,-.12+i*.04));half.rotation.z=sx*.28;book.add(half);}
+  // The page that turns as you read. +x is the rat's left (screen left from behind), so it starts on the -x half and lands on +x: right to left.
+  const flip=new THREE.Group();flip.add(mesh(new THREE.BoxGeometry(.2,.008,.29),'#fbf6e8',-.12,.05,0));
+  for(let i=0;i<7;i++)flip.add(basic(new THREE.BoxGeometry(.13,.004,.012),0x8a7a60,-.12,.056,-.12+i*.04));flip.visible=false;book.add(flip);
   book.position.set(0,1.32,.5);book.rotation.x=-.75;book.visible=false;body.add(book);
   const skirt=mesh(new THREE.BoxGeometry(.72,.34,.5),'#7a5a34',0,.78,0);skirt.visible=false;body.add(skirt);
   body.add(armL,armR);g.add(legL,legR,body);
@@ -1274,8 +1277,16 @@ function renderChat(){
   for(let i=from;i<chatHist.length;i++){const e=chatHist[i],d=document.createElement('div');drawEntry(d,e);e.el=d;chatlog.appendChild(d);}
   chatlog.scrollTop=chatlog.scrollHeight;
 }
+// The log can be folded down to its tab bar. While folded, the Game tab counts new lines; clicking it opens the log again.
+let logUnread=0;
+function setLogHidden(h){
+  state.settings.hideLog=h;if(!h)logUnread=0;$('#chat').classList.toggle('nolog',h);
+  const b=$('#logtoggle');b.textContent=h?`Game ▸${logUnread?` (${logUnread>99?'99+':logUnread})`:''}`:'Game ▾';b.title=h?'Show the game log':'Hide the game log';
+  if(!h)chatlog.scrollTop=chatlog.scrollHeight;
+}
+$('#logtoggle').addEventListener('click',()=>{setLogHidden(!state.settings.hideLog);save();});
 function msg(html,cls){
-  cls=cls||'';const stick=chatNearBottom();
+  cls=cls||'';if(state.settings.hideLog){logUnread++;setLogHidden(true);}const stick=chatNearBottom();
   for(let i=chatHist.length-1;i>=Math.max(0,chatHist.length-4);i--){const e=chatHist[i];
     if(e.h===html&&e.c===cls){e.n++;chatDirty=true;if(e.el&&e.el.isConnected)drawEntry(e.el,e);if(stick)chatlog.scrollTop=chatlog.scrollHeight;return;}}
   const e={h:html,c:cls,n:1};chatHist.push(e);chatDirty=true;
@@ -1844,7 +1855,7 @@ function entOpts(ent,point){
   else if(ent&&ent.kind==='site'){const pc=Math.floor(buildFrac(state.island)*100);
     o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. It's made from logs of this isle's own trees.`));}
   else if(ent&&ent.kind==='trader')o.push({a:'Trade',t:'Hazel',tc:'c-npc',fn:()=>{player.action={type:'trade',ent:TRADER};player.stuck=0;}},
-    {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"')},walk,ex('Hazel',TRADER.ex));
+    {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},walk,ex('Hazel',TRADER.ex));
   else if(ent&&ent.kind==='boat')o.push({a:'Travel',t:'Rowing boat',fn:()=>{player.action={type:'boat',ent:BOAT};player.stuck=0;}},walk,ex('Rowing boat',BOAT.ex));
   else if(ent&&ent.kind==='cabin')o.push({a:'Enter',t:'Log cabin',fn:()=>{player.action={type:'cabin',ent:CABIN};player.stuck=0;}},walk,ex('Log cabin',CABIN.ex));
   else if(ent&&ent.kind==='door')o.push({a:'Exit',t:'Door',fn:()=>{player.action={type:'door'};player.stuck=0;}},ex('Door',DOOR.ex));
@@ -1859,20 +1870,23 @@ function entOpts(ent,point){
 // Each piece of furniture has one thing of its own to do. Seats and the bed start reading; the rest is just for fun.
 const CRATE_FINDS=['an old sock','a very small spider, who you leave be','a map of an island that doesn\'t exist','a button','nothing but sawdust','a note that just says "squeak"','a pine cone you forgot about'];
 const CARD_RESULTS=['You play a game of patience and win!','You play a game of patience and lose. Best of three?','You build a card house. It falls over.','You shuffle the deck and deal yourself a lucky hand.'];
+// Walk up to something, then do it (and only then log it).
+function useAt(x,z,reach,fn){if(player.restMode)setRest(false,'relax',true);player.action={type:'use',ent:{x,z},reach,fn};player.stuck=0;}
 function furnAction(f,ent){
   const R=room(),x=INT.x+f.dx,z=INT.z+f.dz,face=(f.rot||0)*Math.PI/2,n=ent.name.toLowerCase(),fx=Math.sin(face),fz=Math.cos(face);
+  const go=fn=>()=>useAt(x,z,FURN[f.type].r+.55,fn);
   const sparkle=(c,y)=>{for(let i=0;i<10;i++){const a=rand(0,6.28);spawnPart(x,y,z,c,Math.cos(a)*1.2,rand(1,2.5),Math.sin(a)*1.2,.8,4);}};
   switch(f.type){
     case 'stool':case 'chair':return{a:'Sit',t:ent.name,fn:()=>sitOn(x,z,face,.5,n)};
     case 'bed':return{a:'Lie down',t:ent.name,fn:()=>lieDown(x+fx*.95,z+fz*.95,.56,face,`You climb into bed and read ${bookTitle()}.`)};
-    case 'shelf':return{a:'Swap book',t:ent.name,fn:()=>{const b=state.books,i=(b.indexOf(state.book)+1)%b.length;state.book=b[i];setBookCover();
-      msg(b.length>1?`You take ${bookTitle()} off the shelf.`:`${bookTitle()} is your only book. Hazel sells more.`);save();}};
-    case 'wardrobe':return{a:'Change outfit',t:ent.name,fn:()=>{const w=state.outfits,i=(w.indexOf(state.outfit)+1)%w.length;state.outfit=w[i];applyOutfit();
-      msg(w.length>1?`You change into your ${OUTFITS[state.outfit].name.toLowerCase()}.`:'Only one outfit in here. Hazel sells more.');save();}};
-    case 'lamp':return{a:f.off?'Switch on':'Switch off',t:ent.name,fn:()=>{f.off=!f.off;buildInterior();msg(f.off?'You switch the lamp off.':'You switch the lamp on. Cosy.');save();}};
-    case 'crate':return{a:'Search',t:ent.name,fn:()=>msg(`You rummage through the crate and find ${CRATE_FINDS[randi(0,CRATE_FINDS.length-1)]}.`)};
-    case 'planter':return{a:'Water',t:ent.name,fn:()=>{sparkle('#80c0ff',1);msg('You water the little tree. It looks a bit perkier.');}};
-    case 'table':return{a:'Play cards',t:ent.name,fn:()=>msg(CARD_RESULTS[randi(0,CARD_RESULTS.length-1)])};
+    case 'shelf':return{a:'Swap book',t:ent.name,fn:go(()=>{const b=state.books,i=(b.indexOf(state.book)+1)%b.length;state.book=b[i];setBookCover();
+      msg(b.length>1?`You take ${bookTitle()} off the shelf.`:`${bookTitle()} is your only book. Hazel sells more.`);save();})};
+    case 'wardrobe':return{a:'Change outfit',t:ent.name,fn:go(()=>{const w=state.outfits,i=(w.indexOf(state.outfit)+1)%w.length;state.outfit=w[i];applyOutfit();
+      msg(w.length>1?`You change into your ${OUTFITS[state.outfit].name.toLowerCase()}.`:'Only one outfit in here. Hazel sells more.');save();})};
+    case 'lamp':return{a:f.off?'Switch on':'Switch off',t:ent.name,fn:go(()=>{f.off=!f.off;buildInterior();msg(f.off?'You switch the lamp off.':'You switch the lamp on. Cosy.');save();})};
+    case 'crate':return{a:'Search',t:ent.name,fn:go(()=>msg(`You rummage through the crate and find ${CRATE_FINDS[randi(0,CRATE_FINDS.length-1)]}.`))};
+    case 'planter':return{a:'Water',t:ent.name,fn:go(()=>{sparkle('#80c0ff',1);msg('You water the little tree. It looks a bit perkier.');})};
+    case 'table':return{a:'Play cards',t:ent.name,fn:go(()=>msg(CARD_RESULTS[randi(0,CARD_RESULTS.length-1)]))};
   }
   return{a:'Examine',t:ent.name,fn:()=>{}};
 }
@@ -2040,8 +2054,8 @@ function setRest(on,mode='away',noReturn=false,spot=null){
 let flipT=-1,flipWait=3;
 function updateReading(dt){
   if(!player.resting){P.flip.visible=false;flipT=-1;return;}
-  if(flipT<0){flipWait-=dt;if(flipWait<=0){flipT=0;P.flip.visible=true;P.flip.rotation.z=.28;}return;}
-  flipT+=dt/1.1;const e=flipT<1?(1-Math.cos(Math.min(1,flipT)*Math.PI))/2:1;P.flip.rotation.z=lerp(.28,Math.PI-.28,e);
+  if(flipT<0){flipWait-=dt;if(flipWait<=0){flipT=0;P.flip.visible=true;P.flip.rotation.z=-.28;}return;}
+  flipT+=dt/1.1;const e=flipT<1?(1-Math.cos(Math.min(1,flipT)*Math.PI))/2:1;P.flip.rotation.z=lerp(-.28,.28-Math.PI,e);
   if(flipT>=1){flipT=-1;flipWait=rand(4,7);P.flip.visible=false;turnPage();}
 }
 function turnPage(){
@@ -2109,6 +2123,8 @@ function updatePlayer(dt){
       else if(player.stuck>2){stopAction();}
     }else if(a.type==='trade'){
       if(approach(TRADER,TRADER.reach,dt)||player.stuck>2){player.faceT=Math.atan2(TRADER.x-player.x,TRADER.z-player.z);stopAction();openTrade();}
+    }else if(a.type==='use'){
+      if(approach(a.ent,a.reach,dt)||player.stuck>1.5){player.faceT=Math.atan2(a.ent.x-player.x,a.ent.z-player.z);stopAction();a.fn();}
     }else if(a.type==='toSeat'){
       const st=seatPos();if(Math.hypot(player.x-st.x,player.z-st.z)<1.15||stepToward(st.x,st.z,dt)||player.stuck>1.2)sitNow();
     }else if(a.type==='return'){
@@ -2295,7 +2311,7 @@ function applyState(s){
   showLocation();snapCam();
   spawnPet();
   refreshTools();applyOutfit();updateAutoOrb();updateHud();updateFocusHud(true);renderInv();renderTab();
-  setMenusHidden(!!state.settings.hideMenus);updatePovBar();updateRelaxOrb();setBookCover();
+  setMenusHidden(!!state.settings.hideMenus);logUnread=0;setLogHidden(!!state.settings.hideLog);updatePovBar();updateRelaxOrb();setBookCover();
 }
 function bestGatherDef(sk){
   const L=level(sk);let defs;
