@@ -301,18 +301,18 @@ const ISLANDS={
   greenhaven:{name:'Greenhaven',char:1,req:1,tiers:[0,1],trees:{tree:14,oak:10},ph:[0,0],amp:.72,sky:0x9fd3f2,water:0x3f8bd0,
     desc:'Your home isle, with your log cabin and plenty of oaks.',
     pal:{g1:'#4c8a33',g2:'#6aa445',g3:'#3f7a2c',dirt:'#8a6a42',dirt2:'#7a5c38',sand:'#d6c78e',sand2:'#b8a874',bush:'#3f7a2c',tuft:'#3a7228',rock:'#8c8c86'}},
-  willowmere:{name:'Willowmere',char:3,req:30,tiers:[1,2],trees:{willow:13,oak:8,tree:5},ph:[1.3,2.1],amp:.5,sky:0xa8dcea,water:0x3a96b8,
+  willowmere:{name:'Willowmere',char:3,req:30,tiers:[1,2],trees:{willow:13,oak:8,tree:5},ph:[1.3,2.1],amp:.5,sky:0xc4dcc0,water:0x4a9478,wop:.92,
     desc:'A marshy ring of beaches where willows trail into the water.',
-    pal:{g1:'#5a9a3a',g2:'#7cb24e',g3:'#4a8434',dirt:'#7a6a48',dirt2:'#6a5c3c',sand:'#dccf98',sand2:'#bcae7a',bush:'#4a8a34',tuft:'#4a8030',rock:'#8a948a'}},
-  maplecrest:{name:'Maplecrest',char:6,req:45,tiers:[2,3],trees:{maple:13,willow:5,oak:6},ph:[2.7,.6],amp:.85,sky:0xf2dcb4,water:0x4a8ab8,
+    pal:{g1:'#6e8a3a',g2:'#8a9e48',g3:'#4e6e3a',dirt:'#5e5a3e',dirt2:'#4e4c34',sand:'#b8b48a',sand2:'#8e8c68',bush:'#4e7a3a',tuft:'#5a7030',rock:'#7a8478'}},
+  maplecrest:{name:'Maplecrest',char:6,req:45,tiers:[2,3],trees:{maple:13,willow:5,oak:6},ph:[2.7,.6],amp:.85,sky:0xf6d2a8,water:0x4a72a8,
     desc:'Rolling autumn hills. The air smells of syrup.',
-    pal:{g1:'#8f9a3a',g2:'#b2a244',g3:'#a8782e',dirt:'#8a5a32',dirt2:'#7a4c2a',sand:'#dcc488',sand2:'#bca46a',bush:'#c0602a',tuft:'#9a8a30',rock:'#9a8a7a'}},
-  yewmoor:{name:'Yewmoor',char:10,req:60,tiers:[3,4],trees:{yew:11,maple:5,tree:4},ph:[4.1,3.3],amp:1.0,sky:0x9aaabb,water:0x2c5a78,
+    pal:{g1:'#b8782e',g2:'#d09a3c',g3:'#a84a26',dirt:'#7a4a2a',dirt2:'#6a3e24',sand:'#e8c490',sand2:'#c8a070',bush:'#c4402a',tuft:'#8a5a24',rock:'#9a8270'}},
+  yewmoor:{name:'Yewmoor',char:10,req:60,tiers:[3,4],trees:{yew:11,maple:5,tree:4},ph:[4.1,3.3],amp:1.0,sky:0x8e96a4,water:0x263a40,wop:.95,
     desc:'A misty moor of ancient yews. Quiet, and a little spooky.',
-    pal:{g1:'#3c6a3c',g2:'#4c7a46',g3:'#2c5430',dirt:'#5a4a3a',dirt2:'#4a3e32',sand:'#b0a88e',sand2:'#948c74',bush:'#2c5430',tuft:'#2a4a2a',rock:'#6e7070'}},
-  arcane:{name:'Arcane Atoll',char:15,req:75,tiers:[4,5],trees:{magic:10,yew:6},ph:[5.5,1.2],amp:.6,sky:0xc0b0ec,water:0x5a6ad0,
+    pal:{g1:'#4a5a3a',g2:'#6a5468',g3:'#2e4430',dirt:'#4a3c30',dirt2:'#3a3026',sand:'#8e8878',sand2:'#6e6a5e',bush:'#5a3e5a',tuft:'#3a4430',rock:'#5e6064'}},
+  arcane:{name:'Arcane Atoll',char:15,req:75,tiers:[4,5],trees:{magic:10,yew:6},ph:[5.5,1.2],amp:.6,sky:0xd0b8f4,water:0x8a52e0,wop:.8,
     desc:'A shimmering atoll where magic trees hum in the breeze.',
-    pal:{g1:'#4a8a88',g2:'#5aa8a0',g3:'#6a5a9a',dirt:'#5a4a6a',dirt2:'#4c3e5c',sand:'#dcd4ec',sand2:'#bab0d0',bush:'#6a5aa8',tuft:'#3a7a7a',rock:'#9a90b0'}},
+    pal:{g1:'#3a9a94',g2:'#7a6ac0',g3:'#2a7a8a',dirt:'#5a3e74',dirt2:'#4a3262',sand:'#ece0fa',sand2:'#c8b4e8',bush:'#9a5ad0',tuft:'#40b0a8',rock:'#a898c8'}},
 };
 const ISLAND_ORDER=['greenhaven','willowmere','maplecrest','yewmoor','arcane'];
 const ITEMS={
@@ -1690,7 +1690,7 @@ function sailTo(id){
 function buildIsland(id){
   I=ISLANDS[id]||ISLANDS.greenhaven;
   for(const k in I.pal)GC[k]=new THREE.Color(I.pal[k]);
-  scene.background.set(I.sky);scene.fog.color.set(I.sky);water.material.color.set(I.water);hemi.groundColor.set(I.pal.g3);
+  scene.background.set(I.sky);scene.fog.color.set(I.sky);water.material.color.set(I.water);water.material.opacity=I.wop||.86;hemi.groundColor.set(I.pal.g3);
   disposeGroup(worldRoot);disposeGroup(pickRoot);trees.length=0;rocks.length=0;spots.length=0;obstacles.length=0;
   obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,{x:SEAT.x,z:SEAT.z,r:.45});
   buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();
