@@ -1,0 +1,74 @@
+# RatIdle (mobile)
+
+The RatIdle woodcutting game wrapped in an Expo app. The app is locked to portrait.
+
+The game itself lives in `../web/index.html`. `npm run build:game` bundles it, together with three.js and the
+pixel font, into `src/gameHtml.ts`. The app then shows that file in a full-screen `WebView`, so the game works offline.
+
+## Run it
+
+This app uses native modules (WebView, AsyncStorage, haptics, notifications, screen orientation), so it needs a development build.
+Expo Go won't run it.
+
+```bash
+npm install
+npm run ios        # needs Xcode
+npm run android    # needs Android Studio / an emulator or device
+```
+
+No local toolchain? Build in the cloud with `npx eas-cli@latest build --profile development`.
+
+After you edit `../web/index.html`, run `npm run build:game` (or restart `npm start`, which does it for you).
+
+## Controls
+
+- Tap: walk, or chop a tree.
+- Long-press (about half a second, a yellow ring shrinks to your finger): open the options menu. This works on
+  trees, the ground, the bank chest and items in your pack or bank.
+- Drag: turn the camera. Pinch: zoom.
+
+## Focus timer
+
+Start a focus timer (5–120 minutes) from the Focus tab or the FOCUS orb. While it runs:
+
+- Auto-chop is locked on and tapping the world does nothing. The woodcutter chops, banks and repeats on their own,
+  with +50% Woodcutting XP.
+- Giving up rewinds the save to the moment the timer started.
+- When it ends you get character XP and gold. Longer sessions pay more per minute.
+- On the phone, a local notification fires when the timer ends, even if the app is closed.
+
+Pick the skill to focus on (Woodcutting, Mining, Fishing, Smithing, Cooking or Construction). Smithing, Cooking and Construction pay 25% more
+gold and gather their own ore, fish or logs when they run out. Construction builds a hut on each isle from that isle's
+own logs; its level follows overall hut progress and only reaches 99 when every hut is finished.
+
+While a timer runs, the buttons under it switch the camera between Follow, Orbit (slowly circles the rat from
+further out) Island (the whole island from above, with the rat drawn larger) and Eyes (a steady first-person view). When a timer ends you can repeat it with any skill.
+
+You play as a rat. Each skill has its own rare pet (Beaver, Rock golem, Heron, Ember salamander, Sous-chef
+hedgehog); pick which one follows you in the Pets tab.
+
+When the app goes to the background, the rat walks to the campfire to read, and walks back to its work when you return. READ does the same on demand; books for it are sold in the Shop. Progress keeps adding up while
+you're away and is caught up when you return.
+
+Character level (from focus XP) plus Woodcutting, Mining or Fishing at the island's level unlock the five islands.
+Hazel the trader has the same stall on every island and pays far more for jewellery and cooked fish than for raw
+materials. Gold buys outfits, cabin
+upgrades and wood styles for the cabin walls and floor. Logs build furniture inside the cabin, in the wood they came
+from.
+
+## How the app and game talk
+
+The game posts messages through `window.ReactNativeWebView`:
+
+- `save` stores a save slot (1–3) in AsyncStorage. The app passes all slots back in as `window.__RATIDLE_SLOTS__` when the game loads.
+- `deleteSlot` removes a slot. `export` opens the system Share sheet with the save's JSON.
+- `haptic` triggers a buzz on long-press, level-ups and rare drops.
+- `focusStart` / `focusEnd` schedule and cancel the "Focus complete" notification.
+
+When the app goes to the background, it asks the game to save.
+
+## Save slots and import
+
+The game opens on a save-slot screen with three slots. Each slot can be played, exported as JSON, imported into or
+deleted. Imports must be under 512 KB and be a RatIdle export. They are rebuilt field by field: unknown fields are
+dropped, numbers are clamped, and a running focus timer is never imported.
