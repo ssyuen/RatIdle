@@ -397,6 +397,19 @@ const focusGoldFor=(min,sk)=>Math.round(min*4*(1+min/100)*(isProc(sk)?1.25:1));
 const focusSkillXpFor=(min,sk)=>Math.round(min*15*(1+min/100)*(isProc(sk)?1.2:1));
 // Construction is measured in hut progress, not XP. Each isle's hut needs PROJECT_PTS build points.
 const PROJECT_PTS=600,FOCUS_BUILD_DIV=30;
+// Prestige medals: each prestige of a 99 skill resets it to level 1 and awards the next tier.
+// Purely cosmetic. Renown is a bragging number shown on the Skills tab, never spendable.
+const MEDALS=[
+  {name:'Bronze',c:'#b87333',v:100},{name:'Silver',c:'#c8ccd4',v:250},{name:'Gold',c:'#f0c030',v:500},
+  {name:'Platinum',c:'#e4ecf0',v:1000},{name:'Jade',c:'#3ca870',v:2500},{name:'Sapphire',c:'#2a5ae0',v:5000,gem:'#80b0ff'},
+  {name:'Ruby',c:'#c0203a',v:10000,gem:'#ff7090'},{name:'Amethyst',c:'#8a3ad0',v:25000,gem:'#e0a0ff'},
+  {name:'Diamond',c:'#d8f4ff',v:50000,gem:'#ffffff',glow:0x305060},{name:'Celestial',c:'#ffe070',v:100000,gem:'#80fff0',glow:0x806020},
+];
+const MAX_PRESTIGE=MEDALS.length;
+// Construction's level follows hut progress rather than XP, so it can't be prestiged.
+const canPrestige=sk=>sk!=='construction';
+const an=w=>(/^[AEIOU]/.test(w)?'an ':'a ')+w;
+const renownFor=t=>MEDALS.slice(0,t).reduce((a,m)=>a+m.v,0);
 const focusSkillHtml=(min,sk)=>sk==='construction'?`<b>+${(focusSkillXpFor(min,sk)/FOCUS_BUILD_DIV/PROJECT_PTS*100).toFixed(1)}%</b> hut progress`:`<b>+${focusSkillXpFor(min,sk).toLocaleString()}</b> ${SKILLS[sk].name} XP`;
 const focusSkillText=(min,sk)=>focusSkillHtml(min,sk).replace(/<\/?b>/g,'');
 const FOCUS_SKILL_BONUS=1.5;
@@ -407,8 +420,8 @@ const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 // Keys used before the game was renamed from Timberline; still read so old saves carry over.
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
 function freshState(){return{skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
-  stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow'},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
   outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -434,12 +447,14 @@ function sanitize(raw,opts={}){
     for(const k of['burnt','sold','focusSessions','focusMinutes'])f.stats[k]=int(t[k],0,1e12,0);}
   if(isObj(s.pets))for(const k of PET_ORDER)if(s.pets[k]===true)f.pets[k]=true;
   f.activePet=typeof s.activePet==='string'&&f.pets[s.activePet]?s.activePet:(s.activePet===undefined&&f.pets.beaver?'beaver':null);
-  f.hats=pickList(s.hats,SKILLS,5);
+  f.hats=pickList(s.hats,SKILLS,SKILL_ORDER.length);
+  if(isObj(s.prestige))for(const k of SKILL_ORDER)if(canPrestige(k)){const v=int(s.prestige[k],0,MAX_PRESTIGE,0);if(v)f.prestige[k]=v;}
   if(isObj(s.settings)){const t=s.settings,g=f.settings;
     g.auto=t.auto===true;g.sound=t.sound!==false;g.hideMenus=t.hideMenus===true;
     g.xpRate=[1,2,5].includes(t.xpRate)?t.xpRate:2;g.pixel=[1,2,3,4].includes(t.pixel)?t.pixel:2;
     g.focusMin=int(t.focusMin,5,120,25);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
-    g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';}
+    g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
+    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
   f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':'island';
   if(isObj(s.pos))f.pos={x:num(s.pos.x,-500,500,0),z:num(s.pos.z,-500,500,3)};
@@ -490,7 +505,8 @@ const buildAvg=()=>ISLAND_ORDER.reduce((a,k)=>a+buildFrac(k),0)/ISLAND_ORDER.len
 // Construction's level follows overall hut completion and only reaches 99 when every isle's hut is finished.
 const level=(sk='woodcutting')=>sk==='construction'?1+Math.floor(98*buildAvg()):levelFor(state.skills[sk]||0);
 const charLevel=()=>charLevelFor(state.fxp);
-const gatherLevel=()=>Math.max(level('woodcutting'),level('mining'),level('fishing'));
+// A prestiged gathering skill has already reached 99, so it keeps the islands it opened.
+const gatherLevel=()=>Math.max(...['woodcutting','mining','fishing'].map(k=>state.prestige[k]?99:level(k)));
 const toolTier=sk=>{const L=level(sk);let a=TOOL_TIERS[0];for(const x of TOOL_TIERS)if(x.lvl<=L)a=x;return a;};
 // Every skill's equipment upgrades through the same nine tiers as its level rises.
 const TOOL_NAMES={
@@ -994,6 +1010,7 @@ const P=(()=>{
   g.traverse(o=>{if(o.isMesh)o.castShadow=true;});
   scene.add(g);return{g,legL,legR,armL,armR,body,head,axeHead,pickHead,parts,hat,book,tail,tailSegs,skirt,tools:{woodcutting:axe,mining:pick,smithing:hammer,fishing:rod,cooking:pan,construction:build},rodStick,panHead,buildHead,flip};
 })();
+P.medals=new THREE.Group();P.body.add(P.medals);
 function refreshTools(){
   P.axeHead.material=M(toolTier('woodcutting').c);P.pickHead.material=M(toolTier('mining').c);
   P.rodStick.material=M(toolIdx('fishing')<2?'#8a6a3a':toolTier('fishing').c);P.panHead.material=M(toolTier('cooking').c);P.buildHead.material=M(toolTier('construction').c);
@@ -1007,8 +1024,8 @@ function applyOutfit(){
   const o=OUTFITS[state.outfit]||OUTFITS.lumberjack;
   for(const k of['shirt','stripe','pants','boot'])for(const m of P.parts[k])m.material=M(o[k]);
   P.skirt.visible=!!o.skirt;if(o.skirt)P.skirt.material=M(o.shirt);
-  disposeGroup(P.hat);
-  if(o.hat){const [kind,c]=o.hat;
+  disposeGroup(P.hat);const cos=state.settings,outfitHat=o.hat&&!cos.hideOutfitHat?o.hat:null;
+  if(outfitHat){const [kind,c]=outfitHat;
     if(kind==='beanie')P.hat.add(mesh(new THREE.BoxGeometry(.5,.2,.48),c,0,.3,0),mesh(new THREE.BoxGeometry(.12,.1,.12),'#f0e8d8',0,.45,0));
     else if(kind==='ranger')P.hat.add(mesh(new THREE.CylinderGeometry(.44,.44,.04,8),c,0,.27,0),mesh(new THREE.CylinderGeometry(.22,.26,.24,8),c,0,.4,0),mesh(new THREE.CylinderGeometry(.265,.265,.05,8),'#3a2a1a',0,.31,0));
     else if(kind==='crown'){P.hat.add(mesh(new THREE.CylinderGeometry(.25,.25,.1,8),c,0,.3,0));for(let i=0;i<5;i++){const a=i/5*Math.PI*2;P.hat.add(mesh(new THREE.BoxGeometry(.07,.12,.07),c,Math.cos(a)*.22,.4,Math.sin(a)*.22));}P.hat.add(mesh(new THREE.BoxGeometry(.08,.08,.04),'#e03050',0,.31,.25));}
@@ -1016,11 +1033,20 @@ function applyOutfit(){
       const fe=mesh(new THREE.BoxGeometry(.04,.04,.44),'#c0392b',.17,.5,-.12);fe.rotation.set(.6,.3,0);P.hat.add(fe);}
     else if(kind==='wizard'){P.hat.add(mesh(new THREE.CylinderGeometry(.42,.42,.04,8),c,0,.26,0));const cone=mesh(new THREE.ConeGeometry(.28,.75,8),c,0,.65,-.05);cone.rotation.x=-.18;P.hat.add(cone);P.hat.add(mesh(new THREE.OctahedronGeometry(.06,0),'#ffe070',0,.5,.24,{emissive:0x806010}));}}
   // Level-99 skill hats stack on top, in the order they were earned.
-  let y=HAT_TOP[o.hat?o.hat[0]:'none'];
-  for(const sk of state.hats){const [a,b]=SKILLS[sk].hat;
+  let y=HAT_TOP[outfitHat?outfitHat[0]:'none'];
+  for(const sk of state.hats){if(cos.hideHats.includes(sk))continue;const [a,b]=SKILLS[sk].hat;
     if(sk==='cooking'){P.hat.add(mesh(new THREE.CylinderGeometry(.22,.22,.2,8),a,0,y+.1,0),mesh(new THREE.IcosahedronGeometry(.27,0),a,0,y+.3,0),mesh(new THREE.CylinderGeometry(.23,.23,.04,8),b,0,y+.02,0));y+=.46;}
     else{P.hat.add(mesh(new THREE.CylinderGeometry(.3,.3,.04,8),b,0,y+.02,0),mesh(new THREE.CylinderGeometry(.22,.25,.17,8),a,0,y+.12,0),mesh(new THREE.BoxGeometry(.08,.08,.03),b,0,y+.12,.24));y+=.2;}}
   P.hat.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+  // Prestige medals hang in a row across the chest, showing each skill's highest tier. Higher tiers are larger and gain a gem, then a glow.
+  disposeGroup(P.medals);
+  const shown=SKILL_ORDER.filter(sk=>state.prestige[sk]&&!cos.hideMedals.includes(sk));
+  shown.forEach((sk,i)=>{const t=state.prestige[sk],d=MEDALS[t-1],glow=d.glow?{emissive:d.glow}:undefined,m=new THREE.Group();
+    m.position.set((i-(shown.length-1)/2)*.12,1.24,.225);m.scale.setScalar(.85+t*.03);
+    const disc=mesh(new THREE.CylinderGeometry(.045,.045,.02,10),d.c,0,0,.005,glow);disc.rotation.x=Math.PI/2;
+    m.add(mesh(new THREE.BoxGeometry(.06,.08,.012),SKILLS[sk].hat[0],0,.065,0),disc);
+    if(d.gem)m.add(mesh(new THREE.OctahedronGeometry(.022,0),d.gem,0,0,.022,glow));
+    P.medals.add(m);});
 }
 const PETS={
   beaver:    {name:'Beaver',skill:'woodcutting',ex:'A busy little beaver. It found you while you were chopping.'},
@@ -1376,8 +1402,8 @@ function renderSkill(){
   const C=charLevel(),cc=charXpFor(C),cn=charXpFor(C+1),cpct=(state.fxp-cc)/(cn-cc)*100;
   const total=SKILL_ORDER.reduce((a,s)=>a+level(s),0);
   const rows=SKILL_ORDER.map(sk=>{const L=level(sk),xp=state.skills[sk],cur=XP_TABLE[L-1],next=L<99?XP_TABLE[L]:xp,pct=sk==='construction'?buildAvg()*100:L<99?(xp-cur)/(next-cur)*100:100;
-    return `<button class="skrow ${skillView===sk?'sel':''}" data-sk="${sk}"><img alt="" src="${iconURL(SKILLS[sk].icon)}"><div class="meta"><div class="nm"><span>${SKILLS[sk].name}</span><b>${L}</b></div><div class="bar thin"><i style="width:${pct.toFixed(1)}%"></i></div></div></button>`;}).join('');
-  const sv=skillView,L=level(sv),xp=state.skills[sv];
+    return `<button class="skrow ${skillView===sk?'sel':''}" data-sk="${sk}"><img alt="" src="${iconURL(SKILLS[sk].icon)}"><div class="meta"><div class="nm"><span>${SKILLS[sk].name}${state.prestige[sk]?` <span style="color:${MEDALS[state.prestige[sk]-1].c}" title="${MEDALS[state.prestige[sk]-1].name} medal">★</span>`:''}</span><b>${L}</b></div><div class="bar thin"><i style="width:${pct.toFixed(1)}%"></i></div></div></button>`;}).join('');
+  const sv=skillView,L=level(sv),xp=state.skills[sv],pr=state.prestige[sv]||0;
   const dep=sv==='smithing'?'Uses ore from Mining. ':sv==='cooking'?'Uses raw fish from Fishing. ':sv==='construction'?'Uses logs from Woodcutting. ':'';
   const spd=toolName(sv);
   $('#tab-skill').innerHTML=`<p class="ttl">Character level ${C}</p>
@@ -1386,14 +1412,32 @@ function renderSkill(){
   <p class="hint" style="text-align:left;margin-top:0">Earned only by finishing focus timers. Opens new islands.</p>
   <div class="row"><span>Hats earned</span><span class="v">${state.hats.length?state.hats.map(s=>SKILLS[s].name).join(', '):'—'}</span></div>
   <div class="row"><span>Pets</span><span class="v">${PET_ORDER.filter(id=>state.pets[id]).map(id=>PETS[id].name).join(', ')||'—'}</span></div>
+  <div class="row"><span>Medals</span><span class="v">${SKILL_ORDER.filter(k=>state.prestige[k]).map(k=>`${SKILLS[k].name} ${MEDALS[state.prestige[k]-1].name}`).join(', ')||'—'}</span></div>
+  <div class="row"><span>Renown</span><span class="v">${SKILL_ORDER.reduce((a,k)=>a+renownFor(state.prestige[k]||0),0).toLocaleString()}</span></div>
   <p class="sect">Skills · total ${total}</p>${rows}
   <p class="sect">${SKILLS[sv].name}</p>
   ${sv==='construction'?`<div class="row"><span>All huts</span><span class="v">${(buildAvg()*100).toFixed(1)}% built</span></div>`:`<div class="row"><span>XP</span><span class="v">${fmt(xp)}</span></div>
-  <div class="row"><span>${L<99?'Next level at':'Max level'}</span><span class="v">${L<99?XP_TABLE[L].toLocaleString():'—'}</span></div>`}
+  <div class="row"><span>${L<99?'Next level at':'Max level'}</span><span class="v">${L<99?XP_TABLE[L].toLocaleString():'—'}</span></div>
+  <div class="row"><span>Prestige</span><span class="v">${pr} / ${MAX_PRESTIGE}${pr?` · ${MEDALS[pr-1].name}`:''}</span></div>
+  ${L>=99&&pr<MAX_PRESTIGE?`<button class="btn" id="sk-prestige" ${focusing()?'disabled':''}>Prestige to level 1 for ${an(MEDALS[pr].name)} medal</button>`:''}`}
   <div class="row"><span>${sv==='smithing'?'Furnace':sv==='cooking'?'Cookware':'Tool'}</span><span class="v">${spd}</span></div>
-  <p class="hint" style="text-align:left">${sv==='construction'?"Build each isle's hut with logs from that isle's trees. Chops its own logs when you run out. Your level follows overall progress and only reaches 99 when every hut is finished.":`${dep}${sv==='smithing'?'Smith at the furnace. ':sv==='cooking'?'Cook at the campfire. ':''}Better equipment works lower-tier resources faster. Reach 99 to earn this skill's hat.`}</p>
+  <p class="hint" style="text-align:left">${sv==='construction'?"Build each isle's hut with logs from that isle's trees. Chops its own logs when you run out. Your level follows overall progress and only reaches 99 when every hut is finished.":`${dep}${sv==='smithing'?'Smith at the furnace. ':sv==='cooking'?'Cook at the campfire. ':''}Better equipment works lower-tier resources faster. Reach 99 to earn this skill's hat, then prestige back to level 1 for a medal, up to ${MAX_PRESTIGE} times.`}</p>
   ${resourceRows(sv)}`;
   $('#tab-skill').querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{skillView=b.dataset.sk;renderSkill();});
+  const pb=$('#sk-prestige');let armed=false;
+  if(pb)pb.onclick=()=>{if(!armed){armed=true;pb.textContent=`Click again: ${SKILLS[sv].name} goes back to level 1`;setTimeout(()=>{armed=false;if(pb.isConnected)pb.textContent=`Prestige to level 1 for ${an(MEDALS[pr].name)} medal`;},3000);return;}prestige(sv);};
+}
+function prestige(sk){
+  const t=(state.prestige[sk]||0)+1;
+  if(!canPrestige(sk)||level(sk)<99||t>MAX_PRESTIGE||focusing())return;
+  const d=MEDALS[t-1];state.prestige[sk]=t;state.skills[sk]=0;
+  // Whatever the rat was doing may need a higher level now, so it stops.
+  const a=player.action;if(a&&(a.skill===sk||a.ent&&a.ent.skill===sk))stopAction();
+  refreshTools();if(sk==='smithing')rebuildFurnace();applyOutfit();
+  native({type:'haptic',style:'success'});sfx.level();
+  msg(`You prestige ${SKILLS[sk].name} back to level 1 and earn <b>${an(d.name)} medal</b>${t>1?', replacing your '+MEDALS[t-2].name+' one on your chest':''}.`,'m-green');
+  banner(`${SKILLS[sk].name} prestige ${t}!`,`${d.name} medal earned.`);
+  updateHud();renderSkill();save();
 }
 function renderOpts(){
   const s=state.settings;
@@ -1402,6 +1446,11 @@ function renderOpts(){
   <label class="opt" for="o-xp"><span>Skill XP rate</span><select id="o-xp">${[1,2,5].map(v=>`<option value="${v}" ${s.xpRate==v?'selected':''}>${v}×</option>`).join('')}</select></label>
   <label class="opt" for="o-px"><span>Pixel size</span><select id="o-px">${[[1,'Sharp'],[2,'Retro'],[3,'Chunky'],[4,'Potato']].map(([v,n])=>`<option value="${v}" ${s.pixel==v?'selected':''}>${n}</option>`).join('')}</select></label>
   <label class="opt" for="o-snd"><span>Sound</span><input type="checkbox" id="o-snd" ${s.sound?'checked':''}></label>
+  <p class="sect">Cosmetics</p>
+  ${OUTFITS[state.outfit].hat?`<label class="opt" for="o-ohat"><span>Outfit hat</span><input type="checkbox" id="o-ohat" ${s.hideOutfitHat?'':'checked'}></label>`:''}
+  ${SKILL_ORDER.map(k=>(state.hats.includes(k)?`<label class="opt"><span>${SKILLS[k].name} hat</span><input type="checkbox" data-cos="hideHats" data-k="${k}" ${s.hideHats.includes(k)?'':'checked'}></label>`:'')
+    +(state.prestige[k]?`<label class="opt"><span>${SKILLS[k].name} medal (${MEDALS[state.prestige[k]-1].name})</span><input type="checkbox" data-cos="hideMedals" data-k="${k}" ${s.hideMedals.includes(k)?'':'checked'}></label>`:'')).join('')}
+  ${state.hats.length||SKILL_ORDER.some(k=>state.prestige[k])?'':'<p class="hint">Reach 99 in a skill to earn its hat, then prestige it for medals.</p>'}
   <p class="hint">${IS_TOUCH?'Tap: walk / act · Long-press: options<br>Drag: turn camera · Pinch: zoom':'Left-click: walk / act · Right-click: options<br>Drag, middle-drag or arrow keys: rotate<br>Scroll or +/−: zoom · Shift-click item: drop'}</p>
   <p class="sect">Save · slot ${slot||'—'}</p>
   <button class="btn" id="o-export">Export save (JSON)</button>
@@ -1412,6 +1461,9 @@ function renderOpts(){
   $('#o-xp').onchange=e=>{s.xpRate=+e.target.value;save();};
   $('#o-px').onchange=e=>{s.pixel=+e.target.value;resize();save();};
   $('#o-snd').onchange=e=>{s.sound=e.target.checked;save();};
+  const oh=$('#o-ohat');if(oh)oh.onchange=e=>{s.hideOutfitHat=!e.target.checked;applyOutfit();save();};
+  $('#tab-opts').querySelectorAll('[data-cos]').forEach(c=>c.onchange=()=>{const list=s[c.dataset.cos],k=c.dataset.k;
+    if(c.checked)list.splice(list.indexOf(k),1);else if(!list.includes(k))list.push(k);applyOutfit();save();});
   $('#o-export').onclick=()=>openExport(slot);
   $('#o-import').onclick=()=>openImport(slot);
   $('#o-slots').onclick=()=>showTitle();
