@@ -157,6 +157,7 @@ body.nomenus #xpdrops{right:calc(180px + env(safe-area-inset-right,0px))}
 .xpd{position:absolute;right:0;top:0;white-space:nowrap;font-size:15px;color:var(--white);text-shadow:1px 1px 0 #000;display:flex;align-items:center;gap:4px;animation:xpd 1.6s linear forwards}
 .xpd img{width:20px;height:18px;image-rendering:pixelated}
 @keyframes xpd{0%{transform:translateY(90px);opacity:1}80%{opacity:1}100%{transform:translateY(0);opacity:0}}
+#nametag{position:fixed;transform:translate(-50%,-100%);color:#ffff40;font-size:14px;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;white-space:nowrap;pointer-events:none;z-index:5}
 #banner{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:rgba(0,0,0,.65);border:2px solid var(--gold);padding:10px 18px;text-align:center;z-index:12;pointer-events:none;max-width:calc(100vw - 32px)}
 #banner .b1{color:var(--gold);font-size:22px;font-weight:600;text-shadow:2px 2px 0 #000}
 #banner .b2{color:var(--white);font-size:14px;margin-top:4px;text-shadow:1px 1px 0 #000}
@@ -415,13 +416,17 @@ const focusSkillText=(min,sk)=>focusSkillHtml(min,sk).replace(/<\/?b>/g,'');
 const FOCUS_SKILL_BONUS=1.5;
 
 /* ================= STATE / SAVE ================= */
+const RAT_NAMES=['Squeaks','Whiskers','Nibbles','Pip','Bramble','Clover','Hazelnut','Pepper','Tumble','Biscuit','Moss','Juniper'];
+const randomName=()=>RAT_NAMES[randi(0,RAT_NAMES.length-1)];
+// Names are shown over the rat, so keep them short and to letters, numbers and a little punctuation.
+const cleanName=v=>typeof v==='string'?v.replace(/[^\p{L}\p{N} '\-_.]/gu,'').replace(/\s+/g,' ').trim().slice(0,16):'';
 const SAVE_VERSION=3,LEGACY_KEY='timberline-save-v1',SLOTS=[1,2,3],MAX_IMPORT=512*1024;
 const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 // Keys used before the game was renamed from Timberline; still read so old saves carry over.
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
-function freshState(){return{skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
+function freshState(){return{name:randomName(),skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
   stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
   outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -434,6 +439,7 @@ const countMap=(v,table,hi=1e12)=>{const o={};if(isObj(v))for(const k of Object.
 // so an old, hand-edited or hostile save can't break the game or inject anything into the page.
 function sanitize(raw,opts={}){
   const f=freshState();if(!isObj(raw))return f;const s=raw;
+  f.name=cleanName(s.name)||f.name;
   if(isObj(s.skills))for(const k of SKILL_ORDER)f.skills[k]=num(s.skills[k],0,200e6,0);
   else if(typeof s.xp==='number')f.skills.woodcutting=num(s.xp,0,200e6,0);
   f.fxp=int(s.fxp,0,1e9,0);f.gold=int(s.gold,0,1e9,0);
@@ -454,7 +460,7 @@ function sanitize(raw,opts={}){
     g.xpRate=[1,2,5].includes(t.xpRate)?t.xpRate:2;g.pixel=[1,2,3,4].includes(t.pixel)?t.pixel:2;
     g.focusMin=int(t.focusMin,5,120,25);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
     g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
-    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;}
+    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
   f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':'island';
   if(isObj(s.pos))f.pos={x:num(s.pos.x,-500,500,0),z:num(s.pos.z,-500,500,3)};
@@ -468,7 +474,7 @@ function sanitize(raw,opts={}){
     g.woods=[...new Set(['tree',...pickList(c.woods,TREES)])];
     g.wall=g.woods.includes(c.wall)?c.wall:'tree';g.floor=g.woods.includes(c.floor)?c.floor:'tree';
     g.furniture=(Array.isArray(c.furniture)?c.furniture.slice(0,200):[]).filter(x=>isObj(x)&&typeof x.type==='string'&&own(FURN,x.type)&&typeof x.wood==='string'&&own(TREES,x.wood))
-      .slice(0,CABIN_LEVELS[g.level].cap).map(x=>({type:x.type,wood:x.wood,dx:num(x.dx,-7,7,0),dz:num(x.dz,-6,6,0),rot:int(x.rot,0,3,0)}));}
+      .slice(0,CABIN_LEVELS[g.level].cap).map(x=>({type:x.type,wood:x.wood,dx:num(x.dx,-7,7,0),dz:num(x.dz,-6,6,0),rot:int(x.rot,0,3,0),...(x.type==='lamp'&&x.off===true?{off:true}:{})}));}
   f.last=int(s.last,0,Date.now()+864e5,Date.now());
   // A running focus timer is only trusted from this device's own saves, never from an import.
   if(opts.allowFocus&&isObj(s.focus)){const q=s.focus,min=int(q.min,5,120,0),start=num(q.start,0,Date.now()+6e4,0);
@@ -666,6 +672,8 @@ const obstacles=[];
 const CHEST={kind:'chest',name:'Bank chest',x:0,z:-2.2,r:.85,reach:1.75,ex:'A sturdy chest. Your things are safe in here, on every island.'};
 const FIRE={kind:'fire',name:'Campfire',x:2.8,z:1.4,r:.7,reach:1.5,ex:'A cosy campfire. Good for cooking fish, or reading by.'};
 const SEAT={x:4.35,z:2.1};
+const BENCH={kind:'bench',name:'Log bench',ex:'A log by the fire. Comfy enough for a long read.'};
+const HEARTH_STOOL={kind:'hstool',name:'Reading stool',ex:'Your stool by the hearth. The best seat in the house.'};
 const FURNACE={kind:'furnace',name:'Furnace',x:4.2,z:-3.0,r:1.0,reach:1.6,ex:'A stone furnace and anvil. Turn ore into jewellery here.'};
 const TRADER={kind:'trader',name:'Hazel the trader',x:-4.2,z:.6,r:1.1,reach:1.7,ex:'Hazel sails between the islands buying goods. She pays most for finished ones.'};
 const BOAT={kind:'boat',name:'Rowing boat',x:0,z:42.4,r:0,reach:4.6,ex:'A little rowing boat. It can take you to other islands.'};
@@ -690,7 +698,7 @@ function buildFire(){
   // log bench to sit and read on
   const b=new THREE.Group();const lg=mesh(new THREE.CylinderGeometry(.22,.22,1.5,7),'#6b4a2b',0,.22,0);lg.rotation.z=Math.PI/2;b.add(lg);
   b.add(mesh(new THREE.CylinderGeometry(.18,.22,.06,7),'#d8b47a',.76,.22,0).rotateZ(Math.PI/2));
-  b.position.set(SEAT.x,height(SEAT.x,SEAT.z),SEAT.z);b.rotation.y=Math.atan2(FIRE.x-SEAT.x,FIRE.z-SEAT.z)+Math.PI/2;worldRoot.add(b);
+  b.position.set(SEAT.x,height(SEAT.x,SEAT.z),SEAT.z);b.rotation.y=Math.atan2(FIRE.x-SEAT.x,FIRE.z-SEAT.z)+Math.PI/2;tagEnt(b,BENCH);pickRoot.add(b);
 }
 function buildFurnace(){
   const g=new THREE.Group();
@@ -1037,7 +1045,7 @@ function applyOutfit(){
   for(const sk of state.hats){if(cos.hideHats.includes(sk))continue;const [a,b]=SKILLS[sk].hat;
     if(sk==='cooking'){P.hat.add(mesh(new THREE.CylinderGeometry(.22,.22,.2,8),a,0,y+.1,0),mesh(new THREE.IcosahedronGeometry(.27,0),a,0,y+.3,0),mesh(new THREE.CylinderGeometry(.23,.23,.04,8),b,0,y+.02,0));y+=.46;}
     else{P.hat.add(mesh(new THREE.CylinderGeometry(.3,.3,.04,8),b,0,y+.02,0),mesh(new THREE.CylinderGeometry(.22,.25,.17,8),a,0,y+.12,0),mesh(new THREE.BoxGeometry(.08,.08,.03),b,0,y+.12,.24));y+=.2;}}
-  P.hat.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+  P.hat.traverse(o=>{if(o.isMesh)o.castShadow=true;});P.hatTop=y;
   // Prestige medals hang in a row across the chest, showing each skill's highest tier. Higher tiers are larger and gain a gem, then a glow.
   disposeGroup(P.medals);
   const shown=SKILL_ORDER.filter(sk=>state.prestige[sk]&&!cos.hideMedals.includes(sk));
@@ -1117,7 +1125,9 @@ function animatePlayer(dt,T){
   const a=player.anim;const k=Math.min(1,dt*14);
   let lL=0,lR=0,aL=0,aR=0,bob=0,lean=0,headX=0,drop=0,snapArms=false,azL=-.05,azR=.05;
   showTool(a==='walk'||a==='idle'?activity():a);
-  if(player.resting){lL=lR=-1.45;aL=aR=-1.05;azL=.28;azR=-.28;headX=.38;drop=.45;lean=-.05;
+  const sp=player.resting?seatPos():null,lying=!!sp&&sp.pose==='lie';
+  if(lying){lL=lR=0;aL=aR=-1.05;azL=.28;azR=-.28;headX=.38;drop=-(.24+(sp.h||0));P.book.rotation.z=Math.sin(T*.7)*.06;}
+  else if(player.resting){lL=lR=-1.45;aL=aR=-1.05;azL=.28;azR=-.28;headX=.38;drop=.9-(sp.h??.45);lean=-.05;
     P.book.rotation.z=Math.sin(T*.7)*.06;}
   else if(a==='walk'){player.walkT+=dt*9.5;const s=Math.sin(player.walkT);lL=s*.7;lR=-s*.7;aL=-s*.55;aR=s*.55;bob=Math.abs(Math.cos(player.walkT))*.07;}
   else if(a==='woodcutting'||a==='mining'||a==='smithing'||a==='construction'){const ac=player.action;const p=ac?(ac.timer/(ac.cyc||CYCLE[a])):0;const r=swingAngle(p);
@@ -1132,7 +1142,20 @@ function animatePlayer(dt,T){
   P.head.rotation.x=lerp(P.head.rotation.x,headX,k);
   P.head.rotation.y=a==='idle'&&!player.resting?Math.sin(T*.5)*.15:0;
   P.g.userData.drop=lerp(P.g.userData.drop||0,drop,k);
+  P.g.rotation.order='YXZ';P.g.rotation.x=lerp(P.g.rotation.x,lying?-Math.PI/2:0,k);
   P.tail.rotation.y=Math.sin(T*2.2)*(a==='walk'?.5:.3);P.tailSegs.forEach((sg,i)=>{if(i)sg.rotation.y=Math.sin(T*2.2-i*.7)*.14;});
+}
+
+// The rat's name floats just above its tallest hat. It hides in first-person view and when switched off.
+const nameTag=document.createElement('div');nameTag.id='nametag';nameTag.hidden=true;document.body.appendChild(nameTag);
+const tagPos=new THREE.Vector3();
+function updateNameTag(){
+  const show=!titleOpen&&!state.settings.hideName&&P.head.visible;
+  // Lying down turns the hats sideways, so then the tag just floats a little above the head.
+  if(show){P.head.getWorldPosition(tagPos);tagPos.y+=player.resting&&seatPos().pose==='lie'?.7:(P.hatTop||.3)+.45;tagPos.project(camera);}
+  if(!show||tagPos.z>1){nameTag.hidden=true;return;}
+  if(nameTag.textContent!==state.name)nameTag.textContent=state.name;
+  nameTag.hidden=false;nameTag.style.left=((tagPos.x+1)/2*innerWidth).toFixed(1)+'px';nameTag.style.top=((1-tagPos.y)/2*innerHeight).toFixed(1)+'px';
 }
 
 /* ================= CABIN INTERIOR ================= */
@@ -1140,7 +1163,7 @@ const INT={x:400,z:0};
 let walls=[],furnColl=[],floorPick=null,hearthFlames=[],lampLights=0;
 const DOOR={kind:'door',name:'Door',ex:'The way back outside.'};
 function room(){return CABIN_LEVELS[state.cabin.level];}
-function buildFurniture(type,wood){
+function buildFurniture(type,wood,off=false){
   const g=new THREE.Group(),D=woodBark(wood),L=woodRing(wood),glow=wood==='magic'?{emissive:0x0e4a50}:undefined;
   const add=(geo,c,x,y,z,ex)=>{const m=mesh(geo,c,x,y,z,ex);g.add(m);return m;};
   const legs=(w,d,h,c)=>{for(const sx of[-1,1])for(const sz of[-1,1])add(new THREE.BoxGeometry(.08,h,.08),c,sx*w,h/2,sz*d);};
@@ -1150,8 +1173,8 @@ function buildFurniture(type,wood){
   else if(type==='planter'){add(new THREE.BoxGeometry(.6,.45,.6),D,0,.22,0);add(new THREE.BoxGeometry(.64,.06,.64),L,0,.46,0,glow);add(new THREE.BoxGeometry(.5,.03,.5),'#4a3020',0,.48,0);
     add(new THREE.CylinderGeometry(.04,.06,.4,5),D,0,.68,0);add(new THREE.IcosahedronGeometry(.28,0),TREES[wood].leaf,0,.95,0,glow);}
   else if(type==='lamp'){add(new THREE.CylinderGeometry(.2,.26,.08,8),D,0,.04,0);add(new THREE.CylinderGeometry(.05,.05,1.4,6),L,0,.75,0,glow);
-    g.add(basic(new THREE.CylinderGeometry(.18,.28,.32,8),0xffe6a0,0,1.5,0));
-    if(lampLights<3){const l=new THREE.PointLight(0xffd890,.7,6,1.5);l.position.y=1.4;g.add(l);lampLights++;}}
+    g.add(basic(new THREE.CylinderGeometry(.18,.28,.32,8),off?0x6a5e48:0xffe6a0,0,1.5,0));
+    if(!off&&lampLights<3){const l=new THREE.PointLight(0xffd890,.7,6,1.5);l.position.y=1.4;g.add(l);lampLights++;}}
   else if(type==='table'){add(new THREE.BoxGeometry(1.4,.1,.9),L,0,.76,0,glow);for(const sx of[-1,1])for(const sz of[-1,1])add(new THREE.BoxGeometry(.1,.72,.1),D,sx*.6,.36,sz*.35);}
   else if(type==='shelf'){add(new THREE.BoxGeometry(1.0,1.8,.06),D,0,.9,-.18);for(const sx of[-1,1])add(new THREE.BoxGeometry(.07,1.8,.42),D,sx*.5,.9,0);
     for(const y of[.06,.62,1.18,1.76])add(new THREE.BoxGeometry(1.0,.06,.42),L,0,y,0,glow);
@@ -1183,11 +1206,11 @@ function buildInterior(){
   const mat=mesh(new THREE.BoxGeometry(1.1,.03,.6),'#8a6a3a',X,.02,Z+d/2-.45);mat.castShadow=false;tagEnt(mat,DOOR);intPick.add(mat);
   const rug=mesh(new THREE.BoxGeometry(Math.min(3.2,w-3),.03,Math.min(2.2,d-3)),shade(woodBark(fw),.12),X,.02,Z+.3);rug.castShadow=false;interiorRoot.add(rug);
   // reading stool by the hearth
-  const st=buildFurniture('stool',fw);st.position.set(X+1.25,0,Z-d/2+1.55);interiorRoot.add(st);
+  const st=buildFurniture('stool',fw);st.position.set(X+1.25,0,Z-d/2+1.55);tagEnt(st,HEARTH_STOOL);intPick.add(st);
   furnColl=[{x:X,z:Z-d/2+.5,r:1.0}];
   state.cabin.furniture.forEach((f,i)=>{
     f.dx=clamp(f.dx,-w/2+.5,w/2-.5);f.dz=clamp(f.dz,-d/2+.5,d/2-.5);
-    const g=buildFurniture(f.type,f.wood);g.position.set(X+f.dx,0,Z+f.dz);g.rotation.y=(f.rot||0)*Math.PI/2;
+    const g=buildFurniture(f.type,f.wood,!!f.off);g.position.set(X+f.dx,0,Z+f.dz);g.rotation.y=(f.rot||0)*Math.PI/2;
     const ent={kind:'furn',idx:i,name:WOOD_NAME[f.wood]+' '+FURN[f.type].name.toLowerCase()};tagEnt(g,ent);intPick.add(g);
     furnColl.push({x:X+f.dx,z:Z+f.dz,r:FURN[f.type].r});
   });
@@ -1447,6 +1470,8 @@ function renderOpts(){
   <label class="opt" for="o-px"><span>Pixel size</span><select id="o-px">${[[1,'Sharp'],[2,'Retro'],[3,'Chunky'],[4,'Potato']].map(([v,n])=>`<option value="${v}" ${s.pixel==v?'selected':''}>${n}</option>`).join('')}</select></label>
   <label class="opt" for="o-snd"><span>Sound</span><input type="checkbox" id="o-snd" ${s.sound?'checked':''}></label>
   <p class="sect">Cosmetics</p>
+  <label class="opt" for="o-name"><span>Name</span><input type="text" id="o-name" maxlength="16" value="${esc(state.name)}" style="width:9em;font:inherit"></label>
+  <label class="opt" for="o-showname"><span>Show name</span><input type="checkbox" id="o-showname" ${s.hideName?'':'checked'}></label>
   ${OUTFITS[state.outfit].hat?`<label class="opt" for="o-ohat"><span>Outfit hat</span><input type="checkbox" id="o-ohat" ${s.hideOutfitHat?'':'checked'}></label>`:''}
   ${SKILL_ORDER.map(k=>(state.hats.includes(k)?`<label class="opt"><span>${SKILLS[k].name} hat</span><input type="checkbox" data-cos="hideHats" data-k="${k}" ${s.hideHats.includes(k)?'':'checked'}></label>`:'')
     +(state.prestige[k]?`<label class="opt"><span>${SKILLS[k].name} medal (${MEDALS[state.prestige[k]-1].name})</span><input type="checkbox" data-cos="hideMedals" data-k="${k}" ${s.hideMedals.includes(k)?'':'checked'}></label>`:'')).join('')}
@@ -1461,6 +1486,9 @@ function renderOpts(){
   $('#o-xp').onchange=e=>{s.xpRate=+e.target.value;save();};
   $('#o-px').onchange=e=>{s.pixel=+e.target.value;resize();save();};
   $('#o-snd').onchange=e=>{s.sound=e.target.checked;save();};
+  $('#o-name').onchange=e=>{const n=cleanName(e.target.value);if(n){state.name=n;msg(`Your rat is now called <b>${esc(n)}</b>.`);save();}e.target.value=state.name;};
+  $('#o-name').addEventListener('keydown',e=>e.stopPropagation());
+  $('#o-showname').onchange=e=>{s.hideName=!e.target.checked;save();};
   const oh=$('#o-ohat');if(oh)oh.onchange=e=>{s.hideOutfitHat=!e.target.checked;applyOutfit();save();};
   $('#tab-opts').querySelectorAll('[data-cos]').forEach(c=>c.onchange=()=>{const list=s[c.dataset.cos],k=c.dataset.k;
     if(c.checked)list.splice(list.indexOf(k),1);else if(!list.includes(k))list.push(k);applyOutfit();save();});
@@ -1809,7 +1837,9 @@ function entOpts(ent,point){
     o.push(walk,ex(ent.name,ent.state==='full'?ent.def.ex:'There is no ore left in this rock. It will come back soon.'));
   }else if(ent&&ent.kind==='spot')o.push({a:'Fish',t:'Fishing spot',fn:()=>startGather(ent)},walk,ex('Fishing spot',ent.def.ex));
   else if(ent&&ent.kind==='chest')o.push({a:'Deposit-all',t:'Bank chest',fn:goBank},walk,ex('Bank chest',CHEST.ex));
-  else if(ent&&ent.kind==='fire')o.push(...recipeOpts('cooking'),walk,ex('Campfire',FIRE.ex));
+  else if(ent&&ent.kind==='fire')o.push(...recipeOpts('cooking'),{a:'Read by',t:'Campfire',fn:()=>setRest(true,'relax')},walk,ex('Campfire',FIRE.ex));
+  else if(ent&&ent.kind==='bench')o.push({a:'Sit',t:BENCH.name,fn:()=>setRest(true,'relax')},walk,ex(BENCH.name,BENCH.ex));
+  else if(ent&&ent.kind==='hstool')o.push({a:'Sit',t:HEARTH_STOOL.name,fn:()=>setRest(true,'relax')},walk,ex(HEARTH_STOOL.name,HEARTH_STOOL.ex));
   else if(ent&&ent.kind==='furnace')o.push(...recipeOpts('smithing'),walk,ex(toolName('smithing'),`Your ${toolName('smithing').toLowerCase()}. Turn ore into jewellery here. It improves as your Smithing level rises.`));
   else if(ent&&ent.kind==='site'){const pc=Math.floor(buildFrac(state.island)*100);
     o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. It's made from logs of this isle's own trees.`));}
@@ -1819,11 +1849,32 @@ function entOpts(ent,point){
   else if(ent&&ent.kind==='cabin')o.push({a:'Enter',t:'Log cabin',fn:()=>{player.action={type:'cabin',ent:CABIN};player.stuck=0;}},walk,ex('Log cabin',CABIN.ex));
   else if(ent&&ent.kind==='door')o.push({a:'Exit',t:'Door',fn:()=>{player.action={type:'door'};player.stuck=0;}},ex('Door',DOOR.ex));
   else if(ent&&ent.kind==='furn'){const f=state.cabin.furniture[ent.idx];
+    o.push(furnAction(f,ent));
     o.push({a:'Rotate',t:ent.name,fn:()=>{f.rot=((f.rot||0)+1)%4;buildInterior();save();}},walk,
       {a:'Dismantle',t:ent.name,fn:()=>dismantle(ent.idx)},ex(ent.name,`${art(ent.name)} ${ent.name.toLowerCase()}, handmade from ${WOOD_NAME[f.wood].toLowerCase()} logs.`.replace(/^./,c=>c.toUpperCase())));}
-  else if(point)o.push(walk);
+  else if(point){o.push(walk);if(inCabin()||point.y>WATER_Y+.1)o.push({a:'Lie down',t:'here',fn:()=>lieDown(point.x,point.z)});}
   if(focusing())return o.filter(x=>x.a==='Examine'||x.a==='Talk-to');
   return o;
+}
+// Each piece of furniture has one thing of its own to do. Seats and the bed start reading; the rest is just for fun.
+const CRATE_FINDS=['an old sock','a very small spider, who you leave be','a map of an island that doesn\'t exist','a button','nothing but sawdust','a note that just says "squeak"','a pine cone you forgot about'];
+const CARD_RESULTS=['You play a game of patience and win!','You play a game of patience and lose. Best of three?','You build a card house. It falls over.','You shuffle the deck and deal yourself a lucky hand.'];
+function furnAction(f,ent){
+  const R=room(),x=INT.x+f.dx,z=INT.z+f.dz,face=(f.rot||0)*Math.PI/2,n=ent.name.toLowerCase(),fx=Math.sin(face),fz=Math.cos(face);
+  const sparkle=(c,y)=>{for(let i=0;i<10;i++){const a=rand(0,6.28);spawnPart(x,y,z,c,Math.cos(a)*1.2,rand(1,2.5),Math.sin(a)*1.2,.8,4);}};
+  switch(f.type){
+    case 'stool':case 'chair':return{a:'Sit',t:ent.name,fn:()=>sitOn(x,z,face,.5,n)};
+    case 'bed':return{a:'Lie down',t:ent.name,fn:()=>lieDown(x+fx*.95,z+fz*.95,.56,face,`You climb into bed and read ${bookTitle()}.`)};
+    case 'shelf':return{a:'Swap book',t:ent.name,fn:()=>{const b=state.books,i=(b.indexOf(state.book)+1)%b.length;state.book=b[i];setBookCover();
+      msg(b.length>1?`You take ${bookTitle()} off the shelf.`:`${bookTitle()} is your only book. Hazel sells more.`);save();}};
+    case 'wardrobe':return{a:'Change outfit',t:ent.name,fn:()=>{const w=state.outfits,i=(w.indexOf(state.outfit)+1)%w.length;state.outfit=w[i];applyOutfit();
+      msg(w.length>1?`You change into your ${OUTFITS[state.outfit].name.toLowerCase()}.`:'Only one outfit in here. Hazel sells more.');save();}};
+    case 'lamp':return{a:f.off?'Switch on':'Switch off',t:ent.name,fn:()=>{f.off=!f.off;buildInterior();msg(f.off?'You switch the lamp off.':'You switch the lamp on. Cosy.');save();}};
+    case 'crate':return{a:'Search',t:ent.name,fn:()=>msg(`You rummage through the crate and find ${CRATE_FINDS[randi(0,CRATE_FINDS.length-1)]}.`)};
+    case 'planter':return{a:'Water',t:ent.name,fn:()=>{sparkle('#80c0ff',1);msg('You water the little tree. It looks a bit perkier.');}};
+    case 'table':return{a:'Play cards',t:ent.name,fn:()=>msg(CARD_RESULTS[randi(0,CARD_RESULTS.length-1)])};
+  }
+  return{a:'Examine',t:ent.name,fn:()=>{}};
 }
 // Better tools (or, for skills without tools, higher levels) work lower-tier resources faster:
 // a dragon axe makes short work of an oak, while a bronze axe on a magic tree stays at normal speed.
@@ -1946,33 +1997,41 @@ function dismantle(i){
 /* ================= RESTING: reading by the fire ================= */
 // restMode: null, 'away' (you switched to another app or window) or 'relax' (you pressed READ).
 // Either way the rat walks to the fire, sits and reads; coming back walks it back to whatever it was doing.
-let restStart=0,restPrev=null;
+let restStart=0,restPrev=null,restSpot=null;
+// restSpot overrides the usual seat: {x,z,face,pose:'sit'|'lie',h:seat height,say:message when you get there}.
 function seatPos(){
+  if(restSpot)return restSpot;
   if(inCabin()){const R=room();return{x:INT.x+1.25,z:INT.z-R.d/2+1.55,face:Math.atan2(-1.25,-1.05)};}
   return{x:SEAT.x,z:SEAT.z,face:Math.atan2(FIRE.x-SEAT.x,FIRE.z-SEAT.z)};
 }
+const bookTitle=()=>`<i>${esc(BOOKS[state.book].title)}</i>`;
+function lieDown(x,z,h=0,face=player.face,say=`You lie down and read ${bookTitle()}.`){setRest(true,'relax',false,{x,z,face,pose:'lie',h,say});}
+function sitOn(x,z,face,h,name){setRest(true,'relax',false,{x,z,face,pose:'sit',h,say:`You sit on the ${name} and read ${bookTitle()}.`});}
 function setBookCover(){const c=M(BOOKS[state.book].color);for(const half of P.book.children)if(half!==P.flip)half.children[0].material=c;}
 function sitNow(){
   const s=seatPos();player.x=s.x;player.z=s.z;player.face=player.faceT=s.face;player.resting=true;player.action=null;
   setBookCover();
   if(pet){pet.x=s.x-1;pet.z=s.z+.6;}
 }
-function setRest(on,mode='away',noReturn=false){
+function setRest(on,mode='away',noReturn=false,spot=null){
   if(titleOpen)return;
   if(on){
-    if(player.restMode){if(mode==='relax'){player.restMode='relax';updateRelaxOrb();}return;}
+    if(player.restMode){
+      // Already reading: a new seat moves you there, otherwise only the mode changes.
+      if(spot){restSpot=spot;player.resting=false;player.action={type:'toSeat'};player.stuck=0;}
+      if(mode==='relax'){player.restMode='relax';updateRelaxOrb();}return;}
     if(placing)cancelPlacing();closeMenu();
     const a=player.action;
     restPrev={x:player.x,z:player.z,action:a&&a.type!=='walk'&&a.type!=='return'?a:null};
-    player.restMode=mode;restStart=Date.now();player.action={type:'toSeat'};player.stuck=0;
-    if(mode==='relax')msg(`You head to the fire to read <i>${esc(BOOKS[state.book].title)}</i>.`);
+    player.restMode=mode;restStart=Date.now();player.action={type:'toSeat'};player.stuck=0;restSpot=mode==='relax'?spot:null;
+    if(mode==='relax')msg(spot?spot.say:`You head to the fire to read <i>${esc(BOOKS[state.book].title)}</i>.`);
     if(document.hidden)sitNow();   // nothing is drawn while hidden, so sit straight away
   }else{
     if(!player.restMode)return;
     if(mode==='away'&&player.restMode==='relax')return;   // coming back doesn't cancel a relax you chose
     const secs=(Date.now()-restStart)/1000,prev=restPrev;
-    player.restMode=null;player.resting=false;restPrev=null;player.action=null;player.idle=0;
-    lastWall=Date.now();catchUp(secs,'While you were reading by the fire');
+    player.restMode=null;player.resting=false;restPrev=null;restSpot=null;player.action=null;player.idle=0;
+    lastWall=Date.now();catchUp(secs,'While you were reading');
     if(prev&&!noReturn){player.action={type:'return',x:prev.x,z:prev.z,then:prev.action};player.stuck=0;}
   }
   updateRelaxOrb();
@@ -2228,7 +2287,7 @@ mm.addEventListener('contextmenu',e=>e.preventDefault());
 /* ================= STATE APPLY / CATCH-UP ================= */
 function applyState(s){
   stopAction();cancelPlacing();closeMenu();
-  state=sanitize(s,{allowFocus:true});player.restMode=null;player.resting=false;restPrev=null;
+  state=sanitize(s,{allowFocus:true});player.restMode=null;player.resting=false;restPrev=null;restSpot=null;
   buildIsland(state.island);
   player.x=state.pos&&isFinite(state.pos.x)?state.pos.x:0;player.z=state.pos&&isFinite(state.pos.z)?state.pos.z:3;
   if(inCabin()){const R=room();if(Math.abs(player.x-INT.x)>R.w){player.x=INT.x;player.z=INT.z;}}
@@ -2302,7 +2361,7 @@ function frame(now){
   }
   if((slowTick+=dt)>.25){slowTick=0;if(!titleOpen)updateFocusHud();
 if(activeTab==='bank'){const n=nearChest();if(n!==lastNear){lastNear=n;renderBank();}}}
-  drawMinimap();renderer.render(scene,camera);requestAnimationFrame(frame);
+  drawMinimap();updateNameTag();renderer.render(scene,camera);requestAnimationFrame(frame);
 }
 
 /* ================= SAVE SLOTS, EXPORT, IMPORT ================= */
@@ -2320,7 +2379,7 @@ function renderTitle(){
     const v=sanitize(raw,{allowFocus:true}),C=charLevelFor(v.fxp),tot=SKILL_ORDER.reduce((a,k)=>a+levelFor(v.skills[k]),0);
     const run=v.focus&&v.focus.end>Date.now()?` · <span class="ok">focusing: ${clock(v.focus.end-Date.now())} left</span>`:'';
     return `<div class="slot-card"><div class="sh"><span class="sn">Slot ${n}</span><span class="sm2">Played ${ago(Date.now()-v.last)}</span></div>
-      <div class="st">Character level ${C} · Total level ${tot}<br>${v.gold.toLocaleString()} gp · ${esc(ISLANDS[v.island].name)}${run}</div>
+      <div class="st"><b>${esc(v.name)}</b> · Character level ${C} · Total level ${tot}<br>${v.gold.toLocaleString()} gp · ${esc(ISLANDS[v.island].name)}${run}</div>
       <div class="sb"><button class="btn go" data-play="${n}">Play</button><button class="btn" data-exp="${n}">Export</button><button class="btn" data-imp="${n}">Import</button><button class="btn warn" data-del="${n}">Delete</button></div></div>`;}).join('');
   const el=$('#slots');
   el.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>{sfx.init();const n=+b.dataset.play;loadInto(n,sanitize(readSlotRaw(n),{allowFocus:true}),true);});
@@ -2335,8 +2394,8 @@ function loadInto(n,s,had){
   slot=n;titleOpen=false;$('#title').hidden=true;
   loadLog(n);if(chatHist.length)msg('— — —');
   applyState(s);resize();
-  msg('Welcome to <b>RatIdle</b>.');
-  if(!had){msg(IS_TOUCH?'Tap a tree, rock or fishing spot to work it. Long-press anything for more options. Drag to turn the camera, and pinch to zoom.':'Left-click a tree, rock or fishing spot to work it. Right-click anything for more options. Drag or use the arrow keys to turn the camera, and scroll to zoom.','m-blue');
+  msg(`Welcome to <b>RatIdle</b>, ${esc(state.name)}.`);
+  if(!had){msg(`Your rat is called <b>${esc(state.name)}</b>. You can rename it in Options.`,'m-blue');msg(IS_TOUCH?'Tap a tree, rock or fishing spot to work it. Long-press anything for more options. Drag to turn the camera, and pinch to zoom.':'Left-click a tree, rock or fishing spot to work it. Right-click anything for more options. Drag or use the arrow keys to turn the camera, and scroll to zoom.','m-blue');
     msg('Start a <b>Focus</b> timer while you work. Your rat plays on its own and you earn character XP and gold when it ends. Press <b>READ</b> to relax by the fire.','m-blue');}
   else catchUp(away);
   if(focusing()){msg(`Your focus timer is still running: ${clock(state.focus.end-Date.now())} to go.`,'m-blue');native({type:'focusStart',endsAt:state.focus.end,minutes:state.focus.min});}
