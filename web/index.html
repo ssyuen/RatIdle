@@ -147,6 +147,18 @@ body.focusing #hover{display:none}
 .trade .card{text-align:left}
 .trade .price{color:var(--gold);font-size:12px;white-space:nowrap;text-align:right}
 .trade .price s{color:var(--muted);text-decoration:none;font-size:11px;display:block}
+/* tutorial: dims the screen, rings the menu item being explained, and shows a card styled like #modal */
+#tut{position:fixed;inset:0;z-index:34;touch-action:none}
+#tut.center{background:rgba(0,0,0,.55)}
+#tut-hl{position:fixed;border:3px solid var(--gold);box-shadow:0 0 0 9999px rgba(0,0,0,.55),0 0 0 1px #000,0 0 16px rgba(255,152,31,.8);pointer-events:none;animation:tuthl 1.1s ease-in-out infinite alternate}
+@keyframes tuthl{from{border-color:var(--gold)}to{border-color:var(--yellow)}}
+#tut-card{position:fixed;width:min(300px,calc(100vw - 32px));box-sizing:border-box;background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3),0 10px 30px rgba(0,0,0,.5);padding:12px 14px;text-align:center}
+#tut-card .ts{font-size:11px;color:var(--muted);letter-spacing:.1em;text-shadow:1px 1px 0 #000}
+#tut-card h2{color:var(--gold);margin:2px 0 6px;font-size:19px;font-weight:600;text-shadow:2px 2px 0 #000}
+#tut-card .body{color:var(--text);font-size:14px;line-height:1.4;text-shadow:1px 1px 0 #000}
+#tut-card .body b{color:var(--yellow);font-weight:600}
+#tut-card .btns{display:flex;gap:8px;margin-top:10px}
+#tut-card .btns .btn{margin:0}
 #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:25;transition:opacity .45s}
 #placebar{position:fixed;left:50%;bottom:calc(166px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,14,8,.85);border:2px solid var(--gold);padding:6px 10px;z-index:8;display:flex;gap:8px;align-items:center;font-size:13px;text-shadow:1px 1px 0 #000;max-width:calc(100vw - 32px)}
 /* click cross */
@@ -181,7 +193,7 @@ body.touch #chatlog{user-select:none;-webkit-user-select:none}
   #banner{top:auto;bottom:calc(130px + env(safe-area-inset-bottom,0px))}
 }
 @media (max-height:560px){ #side{transform:scale(.72)} #chat{height:100px} }
-@media (prefers-reduced-motion:reduce){ .xpd{animation-duration:.01s} .xmark{animation:none} #fade{transition:none} }
+@media (prefers-reduced-motion:reduce){ #tut-hl{animation:none} .xpd{animation-duration:.01s} .xmark{animation:none} #fade{transition:none} }
 </style>
 
 <canvas id="game"></canvas>
@@ -230,6 +242,7 @@ body.touch #chatlog{user-select:none;-webkit-user-select:none}
 <div id="menu" hidden></div>
 <div id="banner" hidden><div class="b1"></div><div class="b2"></div></div>
 <div id="modal" hidden><div class="box" role="dialog" aria-modal="true"><h2 id="md-title"></h2><div class="body" id="md-body"></div><div class="btns" id="md-btns"></div></div></div>
+<div id="tut" hidden><div id="tut-hl" hidden></div><div id="tut-card" role="dialog" aria-modal="true" aria-labelledby="tut-title"><div class="ts" id="tut-step"></div><h2 id="tut-title"></h2><div class="body" id="tut-body"></div><div class="btns" id="tut-btns"></div></div></div>
 <div id="fade"></div>
 <div id="title" hidden><div class="tbox"><h1>RatIdle</h1><p class="tsub">A cosy skilling game for focused work</p><div id="slots"></div>
   <p class="hint">Each slot is a separate game. Export a save to back it up or move it to another device.</p></div></div>
@@ -428,7 +441,7 @@ const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
 function freshState(){return{name:randomName(),skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
   stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false,tutorialDone:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
   outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -462,7 +475,9 @@ function sanitize(raw,opts={}){
     g.xpRate=[1,2,5].includes(t.xpRate)?t.xpRate:2;g.pixel=[1,2,3,4].includes(t.pixel)?t.pixel:2;
     g.focusMin=int(t.focusMin,5,120,25);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
     g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
-    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;g.hideLog=t.hideLog===true;}
+    g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;g.hideLog=t.hideLog===true;
+    // Saves from before the tutorial existed belong to players who already know the game.
+    g.tutorialDone=t.tutorialDone!==false;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
   f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':'island';
   if(isObj(s.pos))f.pos={x:num(s.pos.x,-500,500,0),z:num(s.pos.z,-500,500,3)};
@@ -917,7 +932,8 @@ class RockEnt{
 }
 class FishSpot{
   constructor(t){this.kind='spot';this.skill='fishing';this.def=FISHES[t];this.cr=0;this.r=0;this.ver=0;this.group=new THREE.Group();pickRoot.add(this.group);
-    const disc=new THREE.Mesh(new THREE.CircleGeometry(1.0,10).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({visible:false}));this.group.add(disc);
+    // Invisible drum around the ripples so the spot is easy to click or long-press from any camera angle.
+    const hitbox=new THREE.Mesh(new THREE.CylinderGeometry(1.8,1.8,1.6,12),new THREE.MeshBasicMaterial({visible:false}));hitbox.position.y=.4;this.group.add(hitbox);
     this.rings=[0,1].map(()=>{const m=basic(new THREE.TorusGeometry(.5,.045,4,12).rotateX(Math.PI/2),0xffffff,0,.06,0,{transparent:true,opacity:.8});this.group.add(m);return m;});
     tagEnt(this.group,this);this.relocate();spots.push(this);}
   get name(){return 'Fishing spot';}
@@ -1488,6 +1504,7 @@ function renderOpts(){
     +(state.prestige[k]?`<label class="opt"><span>${SKILLS[k].name} medal (${MEDALS[state.prestige[k]-1].name})</span><input type="checkbox" data-cos="hideMedals" data-k="${k}" ${s.hideMedals.includes(k)?'':'checked'}></label>`:'')).join('')}
   ${state.hats.length||SKILL_ORDER.some(k=>state.prestige[k])?'':'<p class="hint">Reach 99 in a skill to earn its hat, then prestige it for medals.</p>'}
   <p class="hint">${IS_TOUCH?'Tap: walk / act · Long-press: options<br>Drag: turn camera · Pinch: zoom':'Left-click: walk / act · Right-click: options<br>Drag, middle-drag or arrow keys: rotate<br>Scroll or +/−: zoom · Shift-click item: drop'}</p>
+  <button class="btn" id="o-tut">Replay tutorial</button>
   <p class="sect">Save · slot ${slot||'—'}</p>
   <button class="btn" id="o-export">Export save (JSON)</button>
   <button class="btn" id="o-import">Import save into this slot</button>
@@ -1503,6 +1520,7 @@ function renderOpts(){
   const oh=$('#o-ohat');if(oh)oh.onchange=e=>{s.hideOutfitHat=!e.target.checked;applyOutfit();save();};
   $('#tab-opts').querySelectorAll('[data-cos]').forEach(c=>c.onchange=()=>{const list=s[c.dataset.cos],k=c.dataset.k;
     if(c.checked)list.splice(list.indexOf(k),1);else if(!list.includes(k))list.push(k);applyOutfit();save();});
+  $('#o-tut').onclick=()=>startTutorial();
   $('#o-export').onclick=()=>openExport(slot);
   $('#o-import').onclick=()=>openImport(slot);
   $('#o-slots').onclick=()=>showTitle();
@@ -1644,6 +1662,70 @@ function setMenusHidden(h){
   $('#menutoggle').textContent=h?'Show menus':'Hide menus';$('#bagtoggle').hidden=h;
 }
 $('#menutoggle').addEventListener('click',()=>{setMenusHidden(!state.settings.hideMenus);save();});
+
+/* ================= TUTORIAL ================= */
+// A short walkthrough: each step rings one menu item (opening its tab if it has one) and explains it in a card.
+const TUT=[
+  {title:'Welcome to RatIdle',body:'A focus timer with a rat in it. While you do real work, your rat does its own. Here is the gist.'},
+  {el:'#orb-focus',title:'Focus timers',body:'This is the heart of the game. Press <b>FOCUS</b>, pick a skill and how long, then go do your work. Your rat keeps working the whole time.'},
+  {el:'#tab-focus',tab:'focus',title:'Finish to get paid',body:'When the timer ends you get <b>character XP</b> and <b>gold</b>. Give up early and you lose everything since it started, so pick a length you can finish.'},
+  {el:'#tab-btn-isles',tab:'isles',title:'Level up, sail on',body:'Character levels only come from finished timers. They unlock new <b>isles</b> with better trees, ore and fish.'},
+  {el:'#tab-btn-shop',tab:'shop',title:'Spend your gold',body:'Smith ore and cook fish so Hazel the trader pays more, then spend gold here on outfits, books and a bigger cabin.'},
+  {el:'#orb-auto',title:'Between timers',body:()=>`${IS_TOUCH?'Tap':'Click'} a tree, rock or fishing spot to work it yourself, or turn on <b>AUTO</b> to let your rat idle.`},
+  {title:'You\'re all set',body:'Start a short timer now to see how it works. You can replay this from Options.',last:true},
+];
+let tut=null;
+function startTutorial(){
+  if(titleOpen)return;closeMenu();cancelPlacing();$('#modal').hidden=true;
+  const side=$('#side');
+  tut={i:0,tab:activeTab,collapsed:side.classList.contains('collapsed'),hideMenus:state.settings.hideMenus};
+  $('#tut').hidden=false;showTutStep();
+}
+function showTutStep(){
+  const st=TUT[tut.i];
+  if(st.tab)showTab(st.tab);
+  $('#tut-step').textContent=`${tut.i+1} / ${TUT.length}`;
+  $('#tut-title').textContent=st.title;
+  $('#tut-body').innerHTML=typeof st.body==='function'?st.body():st.body;
+  const bx=$('#tut-btns');bx.innerHTML='';
+  const btn=(label,cls,fn)=>{const b=document.createElement('button');b.className='btn '+cls;b.textContent=label;b.onclick=()=>{sfx.init();fn();};bx.appendChild(b);return b;};
+  if(st.last){btn('Look around','',()=>endTutorial(false));btn('Start a timer','go',()=>endTutorial(true)).focus();}
+  else{btn('Skip tutorial','',()=>endTutorial(false));btn(tut.i?'Next':'Show me','go',()=>{tut.i++;showTutStep();}).focus();}
+  // Wait a frame so a freshly opened tab has its size before the ring and card are placed.
+  requestAnimationFrame(layoutTut);
+}
+function layoutTut(){
+  if(!tut)return;
+  const st=TUT[tut.i],hl=$('#tut-hl'),card=$('#tut-card'),el=st.el&&$(st.el);
+  const r=el&&el.offsetParent!==null?el.getBoundingClientRect():null;
+  $('#tut').classList.toggle('center',!r);hl.hidden=!r;
+  const W=innerWidth,H=innerHeight,w=card.offsetWidth,h=card.offsetHeight,m=16,gap=14;let x,y;
+  if(!r){x=(W-w)/2;y=(H-h)/2;}
+  else{
+    const pad=4;Object.assign(hl.style,{left:r.left-pad+'px',top:r.top-pad+'px',width:r.width+pad*2+'px',height:r.height+pad*2+'px',borderRadius:el.classList.contains('orb')?'50%':'0'});
+    const cx=clamp(r.left+r.width/2-w/2,m,W-w-m),cy=clamp(r.top,m,H-h-m);
+    if(r.left-gap-w>=m){x=r.left-gap-w;y=cy;}
+    else if(r.bottom+gap+h<=H-m){x=cx;y=r.bottom+gap;}
+    else if(r.top-gap-h>=m){x=cx;y=r.top-gap-h;}
+    else{x=m;y=H-h-m;}
+  }
+  card.style.left=Math.round(x)+'px';card.style.top=Math.round(y)+'px';
+}
+function closeTutorial(){if(!tut)return;tut=null;$('#tut').hidden=true;}
+function endTutorial(startTimer){
+  if(!tut)return;const t=tut;closeTutorial();
+  state.settings.tutorialDone=true;
+  if(startTimer)showTab('focus');
+  else{showTab(t.tab);if(t.collapsed&&innerWidth<=760){$('#side').classList.add('collapsed');$('#bagtoggle').textContent='Show pack';}setMenusHidden(t.hideMenus);}
+  save();
+}
+addEventListener('resize',()=>requestAnimationFrame(layoutTut));
+// While the tutorial is open it owns the keyboard: Enter or → for the next step, Escape to skip.
+addEventListener('keydown',e=>{
+  if(!tut||e.key==='Tab')return;e.stopPropagation();
+  if(e.key==='Escape'){e.preventDefault();endTutorial(false);}
+  else if(e.key==='ArrowRight'){e.preventDefault();const b=$('#tut-btns .go');b&&b.click();}
+},true);
 function updateAutoOrb(){const o=$('#orb-auto');o.classList.toggle('on',!!state.settings.auto&&!focusing());o.classList.toggle('locked',focusing());
   $('#orb-state').textContent=focusing()?'LOCK':state.settings.auto?'ON':'OFF';
   $('#orb-focus').classList.toggle('on',focusing());}
@@ -2207,7 +2289,11 @@ function pick(cx,cy){
   const c=inCabin(),base=c?floorPick:ground;
   const hits=ray.intersectObjects(c?[floorPick,intPick]:[ground,pickRoot],true);
   const shown=o=>{for(;o;o=o.parent)if(!o.visible&&o!==floorPick)return false;return true;};
-  for(const h of hits){if(!shown(h.object))continue;const e=h.object.userData.ent;if(e)return{ent:e,point:h.point};if(h.object===base)return{ent:null,point:h.point};}
+  for(const h of hits){if(!shown(h.object))continue;const e=h.object.userData.ent;if(e)return{ent:e,point:h.point};
+    if(h.object===base){
+      // The shoreline can hide a fishing spot's ripples, so ground clicks just next to one count as clicking the spot.
+      if(!c){const p=h.point,sp=spots.find(s=>Math.hypot(s.x-p.x,s.z-p.z)<2.4);if(sp)return{ent:sp,point:p};}
+      return{ent:null,point:h.point};}}
   return null;
 }
 function worldOpts(cx,cy){const p=pick(cx,cy);if(!p)return[];const o=entOpts(p.ent,p.point);o._ent=p.ent;o._pt=p.point;return o;}
@@ -2385,7 +2471,7 @@ const ago=ms=>{const m=Math.floor(ms/60000);return m<1?'just now':m<60?m+' min a
 function showTitle(){
   if(slot&&!titleOpen)save();
   if(player.restMode){player.restMode=null;player.resting=false;}
-  stopAction();cancelPlacing();closeMenu();$('#modal').hidden=true;
+  stopAction();cancelPlacing();closeMenu();$('#modal').hidden=true;closeTutorial();
   titleOpen=true;$('#title').hidden=false;$('#focusbox').hidden=true;document.body.classList.remove('focusing');document.title='RatIdle';renderTitle();
 }
 function renderTitle(){
@@ -2417,6 +2503,7 @@ function loadInto(n,s,had){
   if(focusing()){msg(`Your focus timer is still running: ${clock(state.focus.end-Date.now())} to go.`,'m-blue');native({type:'focusStart',endsAt:state.focus.end,minutes:state.focus.min});}
   if(innerWidth<=760){$('#side').classList.add('collapsed');$('#bagtoggle').textContent='Show pack';}
   lastWall=Date.now();save();
+  if(!state.settings.tutorialDone&&!focusing())startTutorial();
 }
 const exportText=(v,n)=>JSON.stringify({app:'ratidle',version:SAVE_VERSION,slot:n,exportedAt:new Date().toISOString(),save:Object.assign({},v,{focus:null})});
 function openExport(n){
