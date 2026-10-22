@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ssyuen.github.io/RatIdle/sitemap.xml

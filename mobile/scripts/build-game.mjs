@@ -11,7 +11,9 @@ const gamePath = resolve(root, '../web/index.html');
 const threePath = resolve(root, 'node_modules/three/build/three.min.js');
 const outPath = resolve(root, 'src/gameHtml.ts');
 
-let html = readFileSync(gamePath, 'utf8').replace(/^<!doctype html>\n/i, '');
+let html = readFileSync(gamePath, 'utf8').replace(/^<!doctype html>\n<html lang="en">\n/i, '');
+// The web app manifest and home-screen icons only make sense on the website; the app has its own icon.
+html = html.replace(/<link rel="(manifest|icon|apple-touch-icon)"[^>]*>\n/g, '');
 
 const envPath = resolve(root, '.env.local');
 const envFile = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';

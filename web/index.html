@@ -1,7 +1,44 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RatIdle</title>
+<title>RatIdle: a cosy idle skilling game with a focus timer</title>
+<meta name="description" content="RatIdle is a free, cosy idle skilling game you play in your browser. Chop, mine, fish, smith, cook and build as a little rat, and start a focus timer to earn XP and gold while you work.">
+<link rel="canonical" href="https://ssyuen.github.io/RatIdle/">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2a231a">
+<meta name="color-scheme" content="dark">
+<meta name="application-name" content="RatIdle">
+<!-- Add to Home Screen: icons, manifest and standalone display -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="RatIdle">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Link previews -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="RatIdle">
+<meta property="og:title" content="RatIdle: a cosy idle skilling game with a focus timer">
+<meta property="og:description" content="Chop, mine, fish, smith, cook and build as a little rat. Start a focus timer and earn XP and gold while you work.">
+<meta property="og:url" content="https://ssyuen.github.io/RatIdle/">
+<meta property="og:image" content="https://ssyuen.github.io/RatIdle/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The RatIdle rat in its green hat, beside the campfire, bank chest and Hazel's stall.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="RatIdle: a cosy idle skilling game with a focus timer">
+<meta name="twitter:description" content="Chop, mine, fish, smith, cook and build as a little rat. Start a focus timer and earn XP and gold while you work.">
+<meta name="twitter:image" content="https://ssyuen.github.io/RatIdle/og-image.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"VideoGame","name":"RatIdle","url":"https://ssyuen.github.io/RatIdle/",
+ "description":"A cosy idle skilling game with a focus timer. Chop, mine, fish, smith, cook and build while you work.",
+ "image":"https://ssyuen.github.io/RatIdle/og-image.png","genre":["Idle game","Simulation"],"gamePlatform":["Web browser","iOS","Android"],
+ "applicationCategory":"Game","operatingSystem":"Any","inLanguage":"en","isAccessibleForFree":true,
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -288,13 +325,13 @@ const isProc=s=>s==='smithing'||s==='cooking'||s==='construction';
 const CYCLE={woodcutting:1.6,mining:1.6,fishing:2.4,smithing:1.8,cooking:1.6,construction:1.8};
 const TREES={
   tree:  {name:'Tree',      lvl:1, xp:25,  item:'logs',        diff:1.0,dep:1,    rmin:6, rmax:36,trunk:.28,respawn:[6,12], tier:0,map:'#2f7a22',leaf:'#3d7d29',
-          ex:'A commonly found tree. I can chop it with my axe.'},
+          ex:'A commonly found tree.'},
   oak:   {name:'Oak',       lvl:15,xp:37.5,item:'oak_logs',    diff:1.3,dep:1/6,  rmin:7, rmax:36,trunk:.42,respawn:[10,18],tier:1,map:'#245e18',leaf:'#3d6e22',
           ex:'A beautiful old oak.'},
   willow:{name:'Willow',    lvl:30,xp:67.5,item:'willow_logs', diff:1.6,dep:1/8,  rmin:26,rmax:37,trunk:.36,respawn:[12,20],tier:2,map:'#9ab84a',leaf:'#8fb04a',
           ex:'A droopy tree. It likes being near the water.'},
   maple: {name:'Maple tree',lvl:45,xp:100, item:'maple_logs',  diff:2.0,dep:1/8,  rmin:9, rmax:35,trunk:.34,respawn:[15,25],tier:3,map:'#d0602a',leaf:'#c9562a',
-          ex:'One of the best trees for syrup. And logs.'},
+          ex:'A maple, bright with autumn leaves.'},
   yew:   {name:'Yew',       lvl:60,xp:175, item:'yew_logs',    diff:2.6,dep:1/10, rmin:9, rmax:35,trunk:.5, respawn:[20,35],tier:4,map:'#163f1a',leaf:'#2c5a2e',
           ex:'A tough-looking yew tree.'},
   magic: {name:'Magic tree',lvl:75,xp:250, item:'magic_logs',  diff:3.2,dep:1/12, rmin:10,rmax:34,trunk:.3, respawn:[30,50],tier:5,map:'#40e0d8',leaf:'#3fd0c8',
@@ -339,12 +376,12 @@ const ITEMS={
   maple_logs:  {name:'Maple logs',  ex:'Logs cut from a maple tree.',            icon:['log','#8a4a2a','#eaa86a'],value:TIER_VAL[3],kind:'raw'},
   yew_logs:    {name:'Yew logs',    ex:'Logs cut from a yew tree.',              icon:['log','#4f3a28','#c08e5a'],value:TIER_VAL[4],kind:'raw'},
   magic_logs:  {name:'Magic logs',  ex:'Logs made from magical wood. They hum softly.', icon:['log','#4f7584','#a8f4ec',true],value:TIER_VAL[5],kind:'raw'},
-  bird_nest:   {name:'Bird nest',   ex:"It's a bird's nest. There might be something inside.", icon:['nest'], act:'Search',value:10},
-  clue_scroll: {name:'Clue scroll', ex:'A clue! Where could it lead?',           icon:['scroll'], act:'Read',value:50},
-  ancient_coin:{name:'Ancient coin',ex:'An old coin, worn smooth by centuries.', icon:['coin','#e8c050'], stack:true,value:20},
-  golden_acorn:{name:'Golden acorn',ex:'A gleaming acorn of solid gold. Extremely rare.', icon:['acorn','#ffd84a','#b88a10'], act:'Admire',value:500},
-  gold_ring:   {name:'Gold ring',   ex:'Some bird had very good taste.',         icon:['jewel','ring','#f0c840'],value:150},
-  tree_seed:   {name:'Tree seed',   ex:'Plant it and see what grows.',           icon:['seed','#8a6a3a'], plant:'tree',value:3},
+  bird_nest:   {name:'Bird nest',   ex:"A bird's nest that fell from a tree. Search it for a tree seed, or sometimes a gold ring.", icon:['nest'], act:'Search',value:10},
+  clue_scroll: {name:'Clue scroll', ex:'A scrap of paper with a riddle on it. Read it to see what it says.',           icon:['scroll'], act:'Read',value:50},
+  ancient_coin:{name:'Ancient coin',ex:'An old coin, worn smooth by centuries. Hazel collects them.', icon:['coin','#e8c050'], stack:true,value:20},
+  golden_acorn:{name:'Golden acorn',ex:'A gleaming acorn of solid gold, found while chopping. Extremely rare.', icon:['acorn','#ffd84a','#b88a10'], act:'Admire',value:500},
+  gold_ring:   {name:'Gold ring',   ex:'Found in a bird nest. Some bird had very good taste.',         icon:['jewel','ring','#f0c840'],value:150},
+  tree_seed:   {name:'Tree seed',   ex:'Plant it to grow a tree.',           icon:['seed','#8a6a3a'], plant:'tree',value:3},
   acorn:       {name:'Acorn',       ex:'Plant it to grow an oak.',               icon:['acorn','#a87038','#5a3a18'], plant:'oak',value:6},
   willow_seed: {name:'Willow seed', ex:'Plant it to grow a willow.',             icon:['seed','#a8b860'], plant:'willow',value:10},
   maple_seed:  {name:'Maple seed',  ex:'A little helicopter seed. Plant it to grow a maple.', icon:['seed','#d06a30'], plant:'maple',value:18},
@@ -352,13 +389,16 @@ const ITEMS={
   magic_seed:  {name:'Magic seed',  ex:'It glows faintly. Plant it to grow a magic tree.', icon:['seed','#48e8e0'], plant:'magic',value:50},
 };
 ORE_T.forEach(([id,N,c],t)=>{
-  ITEMS[id+'_ore']={name:N+' ore',ex:`Some ${N.toLowerCase()} ore. A smith could turn it into jewellery.`,icon:['ore',c],value:TIER_VAL[t],kind:'raw'};
-  ITEMS[id+'_'+JEWEL[t]]={name:N+' '+JEWEL[t],ex:`A handmade ${N.toLowerCase()} ${JEWEL[t]}. Hazel the trader will pay well for it.`,icon:['jewel',JEWEL[t],c],value:TIER_VAL[t]*8,kind:'good'};
+  ITEMS[id+'_ore']={name:N+' ore',ex:`Some ${N.toLowerCase()} ore. Smelt 2 at a furnace to make ${art(N)} ${N.toLowerCase()} ${JEWEL[t]}.`,icon:['ore',c],value:TIER_VAL[t],kind:'raw'};
+  ITEMS[id+'_'+JEWEL[t]]={name:N+' '+JEWEL[t],ex:`A handmade ${N.toLowerCase()} ${JEWEL[t]}. Hazel pays far more for it than for the ore.`,icon:['jewel',JEWEL[t],c],value:TIER_VAL[t]*8,kind:'good'};
 });
 FISH_T.forEach(([id,N,c,cooked],t)=>{
-  ITEMS['raw_'+id]={name:'Raw '+N.toLowerCase(),ex:`A raw ${N.toLowerCase()}. It needs cooking.`,icon:['fish',c,false],value:TIER_VAL[t],kind:'raw'};
-  ITEMS['cooked_'+id]={name:cooked,ex:`${cooked}. Smells wonderful.`,icon:['fish',c,true],value:TIER_VAL[t]*3,kind:'good'};
+  ITEMS['raw_'+id]={name:'Raw '+N.toLowerCase(),ex:`A raw ${N.toLowerCase()}. Cook it at a campfire to make ${cooked.toLowerCase()}. It may burn.`,icon:['fish',c,false],value:TIER_VAL[t],kind:'raw'};
+  ITEMS['cooked_'+id]={name:cooked,ex:`${cooked}. Smells wonderful. Hazel pays three times as much as for raw.`,icon:['fish',c,true],value:TIER_VAL[t]*3,kind:'good'};
 });
+// Logs build cabin furniture in any wood, and huts only on isles where that tree grows.
+for(const k of TREE_ORDER){const isles=ISLAND_ORDER.filter(i=>ISLANDS[i].trees[k]).map(i=>ISLANDS[i].name);
+  ITEMS[TREES[k].item].ex+=` Build cabin furniture with them${isles.length?`, or build the hut on ${isles.length>1?isles.slice(0,-1).join(', ')+' or '+isles.at(-1):isles[0]}`:''}.`;}
 const woodBark=w=>ITEMS[TREES[w].item].icon[1], woodRing=w=>ITEMS[TREES[w].item].icon[2];
 const TOOL_TIERS=[
   {n:'Bronze',lvl:1,b:0,c:'#b07a3a'},{n:'Iron',lvl:1,b:.02,c:'#8a8a8a'},{n:'Steel',lvl:6,b:.05,c:'#b8b8c0'},
@@ -687,16 +727,16 @@ function updateWater(t){
 
 /* ================= ISLAND PROPS ================= */
 const obstacles=[];
-const CHEST={kind:'chest',name:'Bank chest',x:0,z:-2.2,r:.85,reach:1.75,ex:'A sturdy chest. Your things are safe in here, on every island.'};
-const FIRE={kind:'fire',name:'Campfire',x:2.8,z:1.4,r:.7,reach:1.5,ex:'A cosy campfire. Good for cooking fish, or reading by.'};
+const CHEST={kind:'chest',name:'Bank chest',x:0,z:-2.2,r:.85,reach:1.75,ex:'A sturdy chest. Deposit your whole pack here. The same bank is on every island, and the Bank tab withdraws while you stand beside it.'};
+const FIRE={kind:'fire',name:'Campfire',x:2.8,z:1.4,r:.7,reach:1.5,ex:'A cosy campfire. Cook raw fish from your pack or bank here, or sit and read by it.'};
 const SEAT={x:4.35,z:2.1};
-const BENCH={kind:'bench',name:'Log bench',ex:'A log by the fire. Comfy enough for a long read.'};
-const HEARTH_STOOL={kind:'hstool',name:'Reading stool',ex:'Your stool by the hearth. The best seat in the house.'};
-const FURNACE={kind:'furnace',name:'Furnace',x:4.2,z:-3.0,r:1.0,reach:1.6,ex:'A stone furnace and anvil. Turn ore into jewellery here.'};
-const TRADER={kind:'trader',name:'Hazel the trader',x:-4.2,z:.6,r:1.1,reach:1.7,ex:'Hazel sails between the islands buying goods. She pays most for finished ones.'};
-const BOAT={kind:'boat',name:'Rowing boat',x:0,z:42.4,r:0,reach:4.6,ex:'A little rowing boat. It can take you to other islands.'};
+const BENCH={kind:'bench',name:'Log bench',ex:'A log by the fire. Sit on it to read your book.'};
+const HEARTH_STOOL={kind:'hstool',name:'Reading stool',ex:'Your stool by the hearth. Sit on it to read your book. The best seat in the house.'};
+const FURNACE={kind:'furnace',name:'Furnace',x:4.2,z:-3.0,r:1.0,reach:1.6,ex:'A stone furnace and anvil. Smelt 2 ore into a piece of jewellery here.'};
+const TRADER={kind:'trader',name:'Hazel the trader',x:-4.2,z:.6,r:1.1,reach:1.7,ex:'Hazel rows between the islands with the same stall. She buys what you bring her and pays most for jewellery and cooked fish.'};
+const BOAT={kind:'boat',name:'Rowing boat',x:0,z:42.4,r:0,reach:4.6,ex:'A little rowing boat. Travel in it to any island you have unlocked.'};
 const SITE={kind:'site',name:'Hut',x:-3.8,z:6.8,r:1.9,reach:2.5,ex:''};
-const CABIN={kind:'cabin',name:'Log cabin',x:-8,z:-7,r:2.4,reach:.6,ex:'Your log cabin. Home sweet home.'};
+const CABIN={kind:'cabin',name:'Log cabin',x:-8,z:-7,r:2.4,reach:.6,ex:'Your log cabin. Home sweet home. Go in to place the furniture you build from logs.'};
 let fireFlames=[],fireLight=null,boatMesh=null,chimney=null,furnaceGlow=null,hazel=null;
 function buildChest(){
   const g=new THREE.Group();
@@ -1402,6 +1442,10 @@ function consume(id,n,bankFirst){
 function renderInv(){
   invEl.innerHTML=state.inv.map((s,i)=>`<div class="slot" data-i="${i}">${s?`<img alt="${esc(ITEMS[s.id].name)}" src="${iconURL(s.id)}">${ITEMS[s.id].stack&&s.q>1?`<span class="qty">${s.q}</span>`:''}`:''}</div>`).join('');
 }
+// Examine says what an item is for; ore and raw fish also say if you still need a level to use them.
+const needLv=(sk,lv)=>level(sk)>=lv?'':` You need ${SKILLS[sk].name} level ${lv}.`;
+function itemEx(id){const d=ITEMS[id],r=RECIPES.smithing.concat(RECIPES.cooking).find(x=>x.input===id);
+  return esc(d.ex+(r?needLv(r.skill,r.lvl):''))+(d.value?` <i>(Hazel pays ${d.value} gp each.)</i>`:'');}
 function itemOpts(i){
   const s=state.inv[i];if(!s)return[];const d=ITEMS[s.id];const t=d.name,tc='c-item';const o=[];
   if(d.act==='Search')o.push({a:'Search',t,tc,fn:()=>searchNest(i)});
@@ -1410,7 +1454,7 @@ function itemOpts(i){
   if(d.plant)o.push({a:'Plant',t,tc,fn:()=>plantSeed(i)});
   o.push({a:'Drop',t,tc,fn:()=>dropSlot(i)});
   if(state.inv.filter(x=>x&&x.id===s.id).length>1)o.push({a:'Drop-all',t,tc,fn:()=>dropAll(s.id)});
-  o.push({a:'Examine',t,tc,fn:()=>msg(esc(d.ex)+(d.value?` <i>(Hazel pays ${d.value} gp.)</i>`:''))});
+  o.push({a:'Examine',t,tc,fn:()=>msg(itemEx(s.id))});
   return o;
 }
 function dropSlot(i){const s=state.inv[i];if(!s)return;state.inv[i]=null;renderInv();msg(`You drop the ${esc(ITEMS[s.id].name.toLowerCase())}.`);}
@@ -1446,7 +1490,7 @@ function renderBank(){
 }
 function bankOpts(id){
   const t=ITEMS[id].name,tc='c-item';
-  return[{a:'Withdraw-1',t,tc,fn:()=>withdraw(id,1)},{a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},{a:'Examine',t,tc,fn:()=>msg(esc(ITEMS[id].ex))}];
+  return[{a:'Withdraw-1',t,tc,fn:()=>withdraw(id,1)},{a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},{a:'Examine',t,tc,fn:()=>msg(itemEx(id))}];
 }
 function withdraw(id,n){
   if(!nearChest()){msg('You need to be at the bank chest to withdraw items.');return;}
@@ -1950,20 +1994,22 @@ function recipeOpts(skill){
 function entOpts(ent,point){
   const o=[],walk={a:'Walk here',fn:()=>walkTo(point.x,point.z)};
   const ex=(t,s)=>({a:'Examine',t,fn:()=>msg(esc(s))});
-  if(ent&&ent.kind==='tree'){
+  if(ent&&ent.kind==='tree'){const logs=ITEMS[ent.def.item].name.toLowerCase();
     if(ent.state==='alive')o.push({a:'Chop down',t:ent.name,fn:()=>startGather(ent)});
-    o.push(walk,ex(ent.name,ent.state==='stump'?'This tree has been cut down. Another will grow somewhere soon.':ent.state==='sapling'?'A young tree, still growing.':ent.def.ex));
+    o.push(walk,ex(ent.name,ent.state==='stump'?(ent.planted?"This tree has been cut down. Trees you plant don't grow back.":'This tree has been cut down. Another will grow somewhere on the isle soon.')
+      :ent.state==='sapling'?`A young ${ent.def.name.replace(' tree','').toLowerCase()}, still growing. Once grown, chop it for ${logs}.`:`${ent.def.ex} Chop it down for ${logs}.${needLv('woodcutting',ent.def.lvl)}`));
   }else if(ent&&ent.kind==='rock'){
     if(ent.state==='full')o.push({a:'Mine',t:ent.name,fn:()=>startGather(ent)});
-    o.push(walk,ex(ent.name,ent.state==='full'?ent.def.ex:'There is no ore left in this rock. It will come back soon.'));
-  }else if(ent&&ent.kind==='spot')o.push({a:'Fish',t:'Fishing spot',fn:()=>startGather(ent)},walk,ex('Fishing spot',ent.def.ex));
+    o.push(walk,ex(ent.name,ent.state==='full'?`${ent.def.ex} Mine it for ${ITEMS[ent.def.item].name.toLowerCase()}.${needLv('mining',ent.def.lvl)}`:`There is no ore left in this rock. More ${ent.def.ore.toLowerCase()} ore will form here soon.`));
+  }else if(ent&&ent.kind==='spot')o.push({a:'Fish',t:'Fishing spot',fn:()=>startGather(ent)},walk,
+    ex('Fishing spot',`${ent.def.ex} Fish here for ${ITEMS[ent.def.item].name.toLowerCase()}. The fish move between three patches along this stretch of shore.${needLv('fishing',ent.def.lvl)}`));
   else if(ent&&ent.kind==='chest')o.push({a:'Deposit-all',t:'Bank chest',fn:goBank},walk,ex('Bank chest',CHEST.ex));
   else if(ent&&ent.kind==='fire')o.push(...recipeOpts('cooking'),{a:'Read by',t:'Campfire',fn:()=>setRest(true,'relax')},walk,ex('Campfire',FIRE.ex));
   else if(ent&&ent.kind==='bench')o.push({a:'Sit',t:BENCH.name,fn:()=>setRest(true,'relax')},walk,ex(BENCH.name,BENCH.ex));
   else if(ent&&ent.kind==='hstool')o.push({a:'Sit',t:HEARTH_STOOL.name,fn:()=>setRest(true,'relax')},walk,ex(HEARTH_STOOL.name,HEARTH_STOOL.ex));
-  else if(ent&&ent.kind==='furnace')o.push(...recipeOpts('smithing'),walk,ex(toolName('smithing'),`Your ${toolName('smithing').toLowerCase()}. Turn ore into jewellery here. It improves as your Smithing level rises.`));
+  else if(ent&&ent.kind==='furnace')o.push(...recipeOpts('smithing'),walk,ex(toolName('smithing'),`Your ${toolName('smithing').toLowerCase()}. Smelt 2 ore from your pack or bank into a piece of jewellery here; it goes straight to your bank. It improves as your Smithing level rises.`));
   else if(ent&&ent.kind==='site'){const pc=Math.floor(buildFrac(state.island)*100);
-    o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. It's made from logs of this isle's own trees.`));}
+    o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. Build it with logs from this isle's own trees (${Object.keys(I.trees).map(k=>ITEMS[TREES[k].item].name.toLowerCase()).join(', ')}).`));}
   else if(ent&&ent.kind==='trader')o.push({a:'Trade',t:'Hazel',tc:'c-npc',fn:()=>{player.action={type:'trade',ent:TRADER};player.stuck=0;}},
     {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},walk,ex('Hazel',TRADER.ex));
   else if(ent&&ent.kind==='boat')o.push({a:'Travel',t:'Rowing boat',fn:()=>{player.action={type:'boat',ent:BOAT};player.stuck=0;}},walk,ex('Rowing boat',BOAT.ex));
@@ -1998,7 +2044,7 @@ function furnAction(f,ent){
     case 'planter':return{a:'Water',t:ent.name,fn:go(()=>{sparkle('#80c0ff',1);msg('You water the little tree. It looks a bit perkier.');})};
     case 'table':return{a:'Play cards',t:ent.name,fn:go(()=>msg(CARD_RESULTS[randi(0,CARD_RESULTS.length-1)]))};
   }
-  return{a:'Examine',t:ent.name,fn:()=>{}};
+  return{a:'Examine',t:ent.name,fn:()=>msg(esc(`${art(ent.name)} ${ent.name.toLowerCase()}, handmade from ${WOOD_NAME[f.wood].toLowerCase()} logs.`.replace(/^./,c=>c.toUpperCase())))};
 }
 // Better tools (or, for skills without tools, higher levels) work lower-tier resources faster:
 // a dragon axe makes short work of an oak, while a bronze axe on a magic tree stays at normal speed.
