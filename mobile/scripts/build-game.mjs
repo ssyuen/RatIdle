@@ -1,6 +1,8 @@
 // Bundles ../web/index.html into src/gameHtml.ts so the app runs offline:
 // three.js is inlined from node_modules and the pixel font is embedded when it can be downloaded.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// The Firebase web API key for cloud saves comes from FIREBASE_API_KEY (an EAS environment variable in cloud builds)
+// or from mobile/.env.local, which git ignores. The output file is git-ignored too, since it then contains the key.
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +12,13 @@ const threePath = resolve(root, 'node_modules/three/build/three.min.js');
 const outPath = resolve(root, 'src/gameHtml.ts');
 
 let html = readFileSync(gamePath, 'utf8').replace(/^<!doctype html>\n/i, '');
+
+const envPath = resolve(root, '.env.local');
+const envFile = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+const apiKey = (process.env.FIREBASE_API_KEY || envFile.match(/^FIREBASE_API_KEY=["']?([\w-]+)/m)?.[1] || '').trim();
+if (!html.includes("'__FIREBASE_API_KEY__'")) throw new Error('Firebase API key placeholder not found in game HTML');
+if (/^AIza[\w-]{35}$/.test(apiKey)) html = html.replace("'__FIREBASE_API_KEY__'", () => `'${apiKey}'`);
+else console.warn('No FIREBASE_API_KEY set (env or mobile/.env.local): cloud saves will be hidden in this build.');
 const three = readFileSync(threePath, 'utf8').replace(/<\/script/gi, '<\\/script');
 
 const threeTag = '<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>';

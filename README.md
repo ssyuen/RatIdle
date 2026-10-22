@@ -4,8 +4,24 @@ An idle woodcutting/skilling game with a focus timer.
 
 - `web/` — the game itself, a single `index.html`. Pushes to `main` that touch `web/` deploy it to GitHub Pages.
 - `mobile/` — the Expo app that bundles `web/index.html` into a WebView. See `mobile/README.md`.
-- `firebase.json`, `firestore.rules` — the cloud-save backend (Firebase project `ratidle-be`, free Spark plan). Deploy with
-  `firebase deploy --only firestore,auth`.
+- `firebase.json`, `firestore.rules` — the cloud-save backend (Firebase project `ratidle-be`, free Spark plan). Pushes to
+  `main` that touch them deploy the Firestore rules and indexes. Auth provider settings are deployed by hand with
+  `firebase deploy --only auth`.
+
+## Secrets
+
+No keys are committed. `web/index.html` holds the placeholder `'__FIREBASE_API_KEY__'`, which is filled in at build time:
+
+| Where | Name | Used by |
+| --- | --- | --- |
+| GitHub repository secret | `FIREBASE_API_KEY` | `pages.yml`, when deploying the web game |
+| GitHub repository secret | `FIREBASE_SERVICE_ACCOUNT` | `firebase.yml`: the JSON key of `github-firestore-deploy@ratidle-be.iam.gserviceaccount.com`, which can only manage Firestore rules and indexes |
+| EAS environment variable (sensitive) | `FIREBASE_API_KEY` | EAS cloud builds of the app |
+| `mobile/.env.local` (git-ignored) | `FIREBASE_API_KEY=...` | local app builds |
+
+Without a key the game still runs and simply hides cloud saves. The API key is restricted to the Identity Toolkit, Secure
+Token and Firestore APIs. It still ends up in the page players download, as every Firebase web key does; access is
+controlled by `firestore.rules`, not by keeping the key hidden.
 
 ## Cloud saves
 

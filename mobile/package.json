@@ -22,6 +22,7 @@
   },
   "scripts": {
     "build:game": "node scripts/build-game.mjs",
+    "eas-build-post-install": "node scripts/build-game.mjs",
     "prestart": "node scripts/build-game.mjs",
     "start": "expo start",
     "android": "npm run build:game && expo run:android",

@@ -1511,9 +1511,9 @@ function renderOpts(){
   <button class="btn" id="o-import">Import save into this slot</button>
   <button class="btn" id="o-slots">Switch save slot</button>
   <button class="btn warn" id="o-reset">Delete this save</button>
-  <p class="sect">Cloud save</p>
+  ${CLOUD_ON?`<p class="sect">Cloud save</p>
   <p class="hint">${cloudStatus()}</p>
-  <button class="btn" id="o-cloud">${cloudButtonLabel()}</button>`;
+  <button class="btn" id="o-cloud">${cloudButtonLabel()}</button>`:''}`;
   $('#o-auto').onchange=e=>setAuto(e.target.checked);
   $('#o-xp').onchange=e=>{s.xpRate=+e.target.value;save();};
   $('#o-px').onchange=e=>{s.pixel=+e.target.value;resize();save();};
@@ -1528,7 +1528,7 @@ function renderOpts(){
   $('#o-export').onclick=()=>openExport(slot);
   $('#o-import').onclick=()=>openImport(slot);
   $('#o-slots').onclick=()=>showTitle();
-  $('#o-cloud').onclick=()=>openCloud();
+  const oc=$('#o-cloud');if(oc)oc.onclick=()=>openCloud();
   const rb=$('#o-reset');let armed=false;
   rb.onclick=()=>{if(!armed){armed=true;rb.textContent='Click again to delete this save for good';setTimeout(()=>{armed=false;rb.textContent='Delete this save';},3000);return;}
     native({type:'focusEnd',completed:false});deleteSlot(slot);slot=null;showTitle();};
@@ -2570,7 +2570,9 @@ function doImport(n){
 // while it's hidden; if the 8 hours ran out while it was away, the upload waits until the player is back.
 // Every upload is conditional on the cloud copy being the one this device last saw, so one device never silently
 // overwrites another's progress. Downloads go through parseImport(), like any other import.
-const FB={key:'__FIREBASE_API_KEY__',project:'ratidle-be'};
+// The web API key is filled in at build time (the Pages workflow and mobile/scripts/build-game.mjs) so it never
+// lives in the repo. Without it, e.g. opening index.html straight from a checkout, cloud saves are simply hidden.
+const FB={key:'__FIREBASE_API_KEY__',project:'ratidle-be'},CLOUD_ON=/^AIza[\w-]{35}$/.test(FB.key);
 const CLOUD_EVERY=8*3600e3,CLOUD_RETRY=15*60e3,CLOUD_MAX=100000,CLOUD_KEY='ratidle-cloud';
 const FS_DB=`projects/${FB.project}/databases/(default)`,FS_URL='https://firestore.googleapis.com/v1/'+FS_DB+'/documents';
 const AUTH_URL=`https://identitytoolkit.googleapis.com/v1/accounts:`;
@@ -2669,7 +2671,7 @@ async function cloudDeleteAll(password){
 // (giving up rewinds the save, so the cloud mustn't keep the un-rewound progress).
 const cloudVisible=()=>!document.hidden&&nativeActive;
 function cloudTick(){
-  if(!cloud.user||!cloud.user.verified||!slot||titleOpen||cloudBusy||!cloudVisible()||focusing()||cloudConflict[slot])return;
+  if(!CLOUD_ON||!cloud.user||!cloud.user.verified||!slot||titleOpen||cloudBusy||!cloudVisible()||focusing()||cloudConflict[slot])return;
   const now=Date.now(),l=linkFor(slot);
   if(l&&now>=l.at&&now-l.at<CLOUD_EVERY||now-cloudFailAt<CLOUD_RETRY)return;
   const n=slot;cloudBusy=true;
@@ -2692,6 +2694,7 @@ function cloudRerender(){if(titleOpen)renderTitle();else if(slot)renderOpts();}
 // The slot screen asks once whether to use cloud saves; after that it's a single button.
 function renderCloudChoice(){
   const box=$('#t-cloudbox');if(!box)return;
+  if(!CLOUD_ON){box.innerHTML='';return;}
   if(!cloud.user&&cloud.off===undefined){
     box.innerHTML=`<div class="slot-card"><div class="sh"><span class="sn">Cloud saves</span><span class="sm2">Optional</span></div>
       <div class="st">Back up your slots and play them on other devices. Needs an email address. You can change your mind any time in Options.</div>
@@ -2754,6 +2757,7 @@ function openCloudDelete(){
 }
 // Lists the cloud slots with Restore buttons, plus uploading the slot being played.
 function openCloud(justCreated){
+  if(!CLOUD_ON)return;
   if(!cloud.user){openCloudLogin();return;}
   if(!cloud.user.verified){openCloudVerify(justCreated===true);return;}
   modal('Cloud saves',`<p style="margin:0 0 6px">Signed in as <b>${esc(cloud.user.email)}</b>.</p><div id="cl-list"><p class="hint">Loading…</p></div><p class="hint" id="cl-msg"></p>`,

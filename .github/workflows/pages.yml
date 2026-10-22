@@ -23,6 +23,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # The Firebase web API key lives in the FIREBASE_API_KEY repository secret, never in the repo.
+      - name: Add the Firebase web API key
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          if [ -z "$FIREBASE_API_KEY" ]; then echo "::error::Set the FIREBASE_API_KEY repository secret."; exit 1; fi
+          grep -q "'__FIREBASE_API_KEY__'" web/index.html
+          sed -i "s|'__FIREBASE_API_KEY__'|'${FIREBASE_API_KEY}'|" web/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

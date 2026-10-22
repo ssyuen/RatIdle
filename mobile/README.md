@@ -19,6 +19,9 @@ npm run android    # needs Android Studio / an emulator or device
 No local toolchain? Build in the cloud with `npx eas-cli@latest build --profile development`.
 
 After you edit `../web/index.html`, run `npm run build:game` (or restart `npm start`, which does it for you).
+For cloud saves, put the Firebase web API key in `mobile/.env.local` as `FIREBASE_API_KEY=...` first. That file and the
+generated `src/gameHtml.ts` are git-ignored. EAS builds read the key from the `FIREBASE_API_KEY` EAS environment
+variable and generate the file in the `eas-build-post-install` step.
 
 ## Controls
 

@@ -1,0 +1,34 @@
+name: Deploy Firestore rules
+
+on:
+  push:
+    branches: [main]
+    paths: ['firestore.rules', 'firestore.indexes.json', 'firebase.json', '.firebaserc', '.github/workflows/firebase.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # FIREBASE_SERVICE_ACCOUNT holds the JSON key of a service account that can only manage Firestore rules and
+      # indexes. Auth providers rarely change, so `firebase deploy --only auth` stays a manual step.
+      - name: Deploy Firestore rules and indexes
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then echo "::error::Set the FIREBASE_SERVICE_ACCOUNT repository secret."; exit 1; fi
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          trap 'rm -f "$GOOGLE_APPLICATION_CREDENTIALS"' EXIT
+          npx --yes firebase-tools@15.34.1 deploy --only firestore --project ratidle-be --non-interactive
