@@ -2,6 +2,21 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+// Installed to the home screen (PWA): fill the whole screen. iOS can hand a home-screen app a viewport that still
+// leaves room for Safari's toolbar, so there the height comes from the screen itself. --app-h is the height the
+// page and the game use; html.pwa switches the layout over to it.
+(function(){
+  var d=document.documentElement,ios=navigator.standalone===true;
+  if(!(ios||matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches))return;
+  d.classList.add('pwa');
+  function fit(){var land=innerWidth>innerHeight,h=innerHeight;
+    if(ios)h=Math.max(h,land?Math.min(screen.width,screen.height):Math.max(screen.width,screen.height));
+    d.style.setProperty('--app-h',h+'px');}
+  fit();addEventListener('resize',fit);
+  addEventListener('orientationchange',function(){setTimeout(function(){fit();dispatchEvent(new Event('resize'));},350);});
+})();
+</script>
 <title>RatIdle: a cosy idle skilling game with a focus timer</title>
 <meta name="description" content="RatIdle is a free, cosy idle skilling game you play in your browser. Chop, mine, fish, smith, cook and build as a little rat, and start a focus timer to earn XP and gold while you work.">
 <link rel="canonical" href="https://ssyuen.github.io/RatIdle/">
@@ -73,6 +88,10 @@ input[type=file]{font:12px var(--font);color:var(--text);max-width:100%;margin-t
 .slot-card .sb .btn{width:auto;flex:1;margin:0;padding:5px 8px;font-size:12px}
 .slot-card.empty .st{color:#8a7c66}
 html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--white)}
+/* Home-screen app: size to the full screen, and make the body the frame that fixed UI is positioned in, so the
+   canvas, game log and overlays reach the real bottom edge rather than where Safari's toolbar would be. */
+html.pwa,html.pwa body{height:var(--app-h,100vh)}
+html.pwa body{position:relative;transform:translateZ(0)}
 body{font-family:var(--font);font-size:15px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
 #game{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:default}
 #hover{position:fixed;left:calc(8px + env(safe-area-inset-left,0px));top:calc(6px + env(safe-area-inset-top,0px));font-size:16px;pointer-events:none;text-shadow:1px 1px 0 #000;white-space:nowrap}
@@ -101,6 +120,7 @@ body{font-family:var(--font);font-size:15px;user-select:none;-webkit-user-select
 .tab{--tab-room:calc((100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px);
   padding:8px;min-height:min(268px,var(--tab-room));max-height:min(56vh,var(--tab-room));overflow:auto;touch-action:pan-y;box-sizing:border-box}
 @supports (height:100dvh){.tab{--tab-room:calc((100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px)}}
+html.pwa .tab{--tab-room:calc((var(--app-h,100vh) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px)}
 #inv{display:grid;grid-template-columns:repeat(4,48px);grid-auto-rows:38px;justify-content:center}
 .slot{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .slot:hover{background:rgba(255,255,255,.06)}
@@ -182,6 +202,7 @@ body.focusing #hover{display:none}
 #focuspill .pb{height:4px;background:#3a2a1a;margin-top:3px}#focuspill .pb i{display:block;height:100%;background:var(--focus)}
 #modal{position:fixed;inset:0;z-index:32;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px))}
 #modal .box{background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3);max-width:360px;width:100%;padding:14px 16px;text-align:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column}
+html.pwa #modal .box{max-height:calc(var(--app-h,100vh) - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))}
 #modal h2{color:var(--gold);margin:0 0 8px;font-size:21px;font-weight:600;text-shadow:2px 2px 0 #000}
 #modal .body{color:var(--text);font-size:14px;line-height:1.4;text-shadow:1px 1px 0 #000;overflow:auto;min-height:0;touch-action:pan-y}
 #modal .btns{display:flex;gap:8px;margin-top:12px}
@@ -315,6 +336,9 @@ const RN=window.ReactNativeWebView||null;
 const IS_TOUCH=!!RN||!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
 if(IS_TOUCH)document.body.classList.add('touch');
 function native(m){if(RN)try{RN.postMessage(JSON.stringify(m));}catch(e){}}
+// Height of the game area: the full screen when installed to the home screen (see the <head> script), else the window.
+let VH=innerHeight;
+const measureVH=()=>{VH=parseFloat(document.documentElement.style.getPropertyValue('--app-h'))||innerHeight;};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=n=>(Math.round(n*10)/10).toLocaleString();
 const short=n=>n>=1e7?Math.floor(n/1e6)+'M':n>=1e5?Math.floor(n/1e3)+'K':String(n);
@@ -1251,7 +1275,7 @@ function updateNameTag(){
   if(show){P.head.getWorldPosition(tagPos);tagPos.y+=player.resting&&seatPos().pose==='lie'?.7:(P.hatTop||.3)+.45;tagPos.project(camera);}
   if(!show||tagPos.z>1){nameTag.hidden=true;return;}
   if(nameTag.textContent!==state.name)nameTag.textContent=state.name;
-  nameTag.hidden=false;nameTag.style.left=((tagPos.x+1)/2*innerWidth).toFixed(1)+'px';nameTag.style.top=((1-tagPos.y)/2*innerHeight).toFixed(1)+'px';
+  nameTag.hidden=false;nameTag.style.left=((tagPos.x+1)/2*innerWidth).toFixed(1)+'px';nameTag.style.top=((1-tagPos.y)/2*VH).toFixed(1)+'px';
 }
 
 /* ================= CABIN INTERIOR ================= */
@@ -1419,7 +1443,7 @@ function openMenu(x,y,opts){
   opts=opts.concat([{a:'Cancel',fn:()=>{}}]);
   menuEl.innerHTML='<div class="hd">Choose Option</div>'+opts.map((o,i)=>`<div class="it" data-i="${i}">${optHTML(o)}</div>`).join('');
   menuEl.hidden=false;const w=menuEl.offsetWidth,h=menuEl.offsetHeight;
-  menuEl.style.left=clamp(x-w/2,4,innerWidth-w-4)+'px';menuEl.style.top=clamp(y-8,4,innerHeight-h-4)+'px';
+  menuEl.style.left=clamp(x-w/2,4,innerWidth-w-4)+'px';menuEl.style.top=clamp(y-8,4,VH-h-4)+'px';
   menuOpen=true;menuEl._opts=opts;menuEl._armed=false;
 }
 function closeMenu(){menuEl.hidden=true;menuOpen=false;}
@@ -1784,7 +1808,7 @@ function layoutTut(){
   const st=TUT[tut.i],hl=$('#tut-hl'),card=$('#tut-card'),el=st.el&&$(st.el);
   const r=el&&el.offsetParent!==null?el.getBoundingClientRect():null;
   $('#tut').classList.toggle('center',!r);hl.hidden=!r;
-  const W=innerWidth,H=innerHeight,w=card.offsetWidth,h=card.offsetHeight,m=16,gap=14;let x,y;
+  const W=innerWidth,H=VH,w=card.offsetWidth,h=card.offsetHeight,m=16,gap=14;let x,y;
   if(!r){x=(W-w)/2;y=(H-h)/2;}
   else{
     const pad=4;Object.assign(hl.style,{left:r.left-pad+'px',top:r.top-pad+'px',width:r.width+pad*2+'px',height:r.height+pad*2+'px',borderRadius:el.classList.contains('orb')?'50%':'0'});
@@ -2373,7 +2397,7 @@ function updateCamera(dt){
 }
 const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 function pick(cx,cy){
-  ndc.set(cx/innerWidth*2-1,-(cy/innerHeight)*2+1);ray.setFromCamera(ndc,camera);
+  ndc.set(cx/innerWidth*2-1,-(cy/VH)*2+1);ray.setFromCamera(ndc,camera);
   const c=inCabin(),base=c?floorPick:ground;
   const hits=ray.intersectObjects(c?[floorPick,intPick]:[ground,pickRoot],true);
   const shown=o=>{for(;o;o=o.parent)if(!o.visible&&o!==floorPick)return false;return true;};
@@ -2526,7 +2550,7 @@ function catchUp(secs,label){
 }
 
 /* ================= LOOP ================= */
-function resize(){const s=state.settings.pixel||2;renderer.setPixelRatio(1);renderer.setSize(Math.max(1,Math.round(innerWidth/s)),Math.max(1,Math.round(innerHeight/s)),false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}
+function resize(){measureVH();const s=state.settings.pixel||2;renderer.setPixelRatio(1);renderer.setSize(Math.max(1,Math.round(innerWidth/s)),Math.max(1,Math.round(VH/s)),false);camera.aspect=innerWidth/VH;camera.updateProjectionMatrix();}
 addEventListener('resize',resize);
 let T=0,last=performance.now(),lastWall=Date.now(),hoverTick=0,slowTick=0,lastNear=null;
 function frame(now){
