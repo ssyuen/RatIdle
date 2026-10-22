@@ -59,7 +59,8 @@ textarea{width:100%;box-sizing:border-box;background:var(--stone-1);color:var(--
 input[type=file]{font:12px var(--font);color:var(--text);max-width:100%;margin-top:6px}
 .field{display:block;width:100%;box-sizing:border-box;margin:0 0 6px;background:var(--stone-1);color:var(--text);border:2px solid var(--stone-0);font:14px var(--font);padding:6px;user-select:text;-webkit-user-select:text}
 /* save-slot title screen */
-#title{position:fixed;inset:0;z-index:30;background:linear-gradient(rgba(10,8,5,.35),rgba(10,8,5,.7));display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#title{position:fixed;inset:0;z-index:30;background:linear-gradient(rgba(10,8,5,.35),rgba(10,8,5,.7));display:flex;padding:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px));overflow:auto}
+#title .tbox{margin:auto}
 #title .tbox{width:min(440px,100%);background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3),0 10px 40px rgba(0,0,0,.5);padding:16px 16px 12px}
 #title h1{margin:0;text-align:center;font:600 44px var(--font);color:var(--gold);text-shadow:3px 3px 0 #000,0 0 18px rgba(255,152,31,.35);letter-spacing:.02em}
 #title .tsub{text-align:center;color:var(--muted);margin:2px 0 12px;font-size:13px;text-shadow:1px 1px 0 #000}
@@ -73,11 +74,11 @@ input[type=file]{font:12px var(--font);color:var(--text);max-width:100%;margin-t
 .slot-card.empty .st{color:#8a7c66}
 html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--white)}
 body{font-family:var(--font);font-size:15px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
-#game{position:fixed;inset:0;width:100vw;height:100vh;display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:default}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:default}
 #hover{position:fixed;left:calc(8px + env(safe-area-inset-left,0px));top:calc(6px + env(safe-area-inset-top,0px));font-size:16px;pointer-events:none;text-shadow:1px 1px 0 #000;white-space:nowrap}
 .c-obj{color:var(--cyan)} .c-item{color:var(--item)} .c-act{color:var(--white)} .c-more{color:var(--white)} .c-npc{color:var(--yellow)}
 /* side panel */
-#side{position:fixed;right:env(safe-area-inset-right,0px);top:env(safe-area-inset-top,0px);width:244px;display:flex;flex-direction:column;transform-origin:top right;z-index:5}
+#side{--side-scale:1;--tabs-h:56px;position:fixed;right:env(safe-area-inset-right,0px);top:env(safe-area-inset-top,0px);width:244px;display:flex;flex-direction:column;transform-origin:top right;z-index:5}
 #mapwrap{position:relative;height:190px}
 #minimap{position:absolute;right:10px;top:8px;width:156px;height:156px;border-radius:50%;box-shadow:0 0 0 4px var(--stone-1),0 0 0 6px var(--stone-3),0 0 0 8px var(--stone-0);cursor:pointer;background:#2b5f95}
 .orb{position:absolute;width:44px;height:44px;border-radius:50%;border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3);background:var(--stone-2);color:var(--white);font:600 10px var(--font);display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;text-shadow:1px 1px 0 #000;padding:0;line-height:1}
@@ -97,7 +98,9 @@ body{font-family:var(--font);font-size:15px;user-select:none;-webkit-user-select
 #tabs button{background:var(--stone-2);color:#d8c8a8;border:0;border-right:2px solid var(--stone-0);border-bottom:2px solid var(--stone-0);font:600 12px var(--font);padding:5px 0 4px;cursor:pointer;text-shadow:1px 1px 0 #000}
 #tabs button:nth-child(5n){border-right:0}
 #tabs button.active{background:#7a2d1c;color:var(--white);box-shadow:inset 0 -2px 0 #b4492c}
-.tab{padding:8px;min-height:268px;max-height:56vh;overflow:auto;touch-action:pan-y}
+.tab{--tab-room:calc((100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px);
+  padding:8px;min-height:min(268px,var(--tab-room));max-height:min(56vh,var(--tab-room));overflow:auto;touch-action:pan-y;box-sizing:border-box}
+@supports (height:100dvh){.tab{--tab-room:calc((100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px)}}
 #inv{display:grid;grid-template-columns:repeat(4,48px);grid-auto-rows:38px;justify-content:center}
 .slot{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .slot:hover{background:rgba(255,255,255,.06)}
@@ -177,8 +180,8 @@ body.focusing #hover{display:none}
 #focuspill .l{font-size:11px;color:#ffb0a0;letter-spacing:.1em;text-shadow:1px 1px 0 #000}
 #focuspill .t{font-size:22px;color:var(--yellow);font-variant-numeric:tabular-nums;text-shadow:2px 2px 0 #000;line-height:1}
 #focuspill .pb{height:4px;background:#3a2a1a;margin-top:3px}#focuspill .pb i{display:block;height:100%;background:var(--focus)}
-#modal{position:fixed;inset:0;z-index:32;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px}
-#modal .box{background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3);max-width:360px;width:100%;padding:14px 16px;text-align:center;max-height:calc(100vh - 48px);display:flex;flex-direction:column}
+#modal{position:fixed;inset:0;z-index:32;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px))}
+#modal .box{background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3);max-width:360px;width:100%;padding:14px 16px;text-align:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column}
 #modal h2{color:var(--gold);margin:0 0 8px;font-size:21px;font-weight:600;text-shadow:2px 2px 0 #000}
 #modal .body{color:var(--text);font-size:14px;line-height:1.4;text-shadow:1px 1px 0 #000;overflow:auto;min-height:0;touch-action:pan-y}
 #modal .btns{display:flex;gap:8px;margin-top:12px}
@@ -209,7 +212,7 @@ body.nomenus #xpdrops{right:calc(180px + env(safe-area-inset-right,0px))}
 .xpd{position:absolute;right:0;top:0;white-space:nowrap;font-size:15px;color:var(--white);text-shadow:1px 1px 0 #000;display:flex;align-items:center;gap:4px;animation:xpd 1.6s linear forwards}
 .xpd img{width:20px;height:18px;image-rendering:pixelated}
 @keyframes xpd{0%{transform:translateY(90px);opacity:1}80%{opacity:1}100%{transform:translateY(0);opacity:0}}
-#nametag{position:fixed;transform:translate(-50%,-100%);color:#ffff40;font-size:14px;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;white-space:nowrap;pointer-events:none;z-index:5}
+#nametag{position:fixed;transform:translate(-50%,-100%);color:#ffff40;font-size:14px;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;white-space:nowrap;pointer-events:none;z-index:3} /* under the side panel and game log */
 #banner{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:rgba(0,0,0,.65);border:2px solid var(--gold);padding:10px 18px;text-align:center;z-index:12;pointer-events:none;max-width:calc(100vw - 32px)}
 #banner .b1{color:var(--gold);font-size:22px;font-weight:600;text-shadow:2px 2px 0 #000}
 #banner .b2{color:var(--white);font-size:14px;margin-top:4px;text-shadow:1px 1px 0 #000}
@@ -218,9 +221,18 @@ body.nomenus #xpdrops{right:calc(180px + env(safe-area-inset-right,0px))}
 @keyframes lp{from{transform:scale(1.7);opacity:.15}to{transform:scale(.45);opacity:1}}
 body.touch #hover{display:none}
 body.touch #chatlog{user-select:none;-webkit-user-select:none}
+/* Touch screens get finger-sized targets (sizes before the panel's scale-down on small screens). */
+body.touch #side{--tabs-h:80px}
+body.touch #tabs button{min-height:40px}
+body.touch #chatbar span,body.touch #chatbar button{padding:9px 14px}
+body.touch .chip{padding:8px 11px;min-width:36px}
+body.touch .tab .btn{min-height:38px}
+body.touch .opt select,body.touch .opt input[type=text]{min-height:34px}
+body.touch #focuspill{padding:6px 14px 7px}
 @media (max-width:760px){
-  #side{transform:scale(.78)}
+  #side{transform:scale(.78);--side-scale:.78}
   #chat{width:calc(100vw - 16px);height:96px}
+  body.touch #chat{height:112px}
   #chatlog{font-size:12px}
   #xpdrops{right:calc(205px + env(safe-area-inset-right,0px))}
   body.nomenus #xpdrops{right:calc(140px + env(safe-area-inset-right,0px))}
@@ -230,7 +242,9 @@ body.touch #chatlog{user-select:none;-webkit-user-select:none}
   #placebar{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
   #banner{top:auto;bottom:calc(130px + env(safe-area-inset-bottom,0px))}
 }
-@media (max-height:560px){ #side{transform:scale(.72)} #chat{height:100px} }
+@media (max-height:560px){ #side{transform:scale(.72);--side-scale:.72} #chat{height:100px} }
+/* Short landscape phones: keep the game log clear of the side panel (244px wide at 72%). */
+@media (max-height:560px) and (orientation:landscape){ #chat{width:min(520px,calc(100vw - 190px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)))} }
 @media (prefers-reduced-motion:reduce){ #tut-hl{animation:none} .xpd{animation-duration:.01s} .xmark{animation:none} #fade{transition:none} }
 </style>
 
