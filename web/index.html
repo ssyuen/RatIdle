@@ -20,6 +20,7 @@
 [hidden]{display:none!important}
 textarea{width:100%;box-sizing:border-box;background:var(--stone-1);color:var(--text);border:2px solid var(--stone-0);font:11px ui-monospace,Menlo,monospace;padding:6px;resize:vertical;touch-action:auto;user-select:text;-webkit-user-select:text}
 input[type=file]{font:12px var(--font);color:var(--text);max-width:100%;margin-top:6px}
+.field{display:block;width:100%;box-sizing:border-box;margin:0 0 6px;background:var(--stone-1);color:var(--text);border:2px solid var(--stone-0);font:14px var(--font);padding:6px;user-select:text;-webkit-user-select:text}
 /* save-slot title screen */
 #title{position:fixed;inset:0;z-index:30;background:linear-gradient(rgba(10,8,5,.35),rgba(10,8,5,.7));display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
 #title .tbox{width:min(440px,100%);background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3),0 10px 40px rgba(0,0,0,.5);padding:16px 16px 12px}
@@ -245,7 +246,7 @@ body.touch #chatlog{user-select:none;-webkit-user-select:none}
 <div id="tut" hidden><div id="tut-hl" hidden></div><div id="tut-card" role="dialog" aria-modal="true" aria-labelledby="tut-title"><div class="ts" id="tut-step"></div><h2 id="tut-title"></h2><div class="body" id="tut-body"></div><div class="btns" id="tut-btns"></div></div></div>
 <div id="fade"></div>
 <div id="title" hidden><div class="tbox"><h1>RatIdle</h1><p class="tsub">A cosy skilling game for focused work</p><div id="slots"></div>
-  <p class="hint">Each slot is a separate game. Export a save to back it up or move it to another device.</p></div></div>
+  <p class="hint">Each slot is a separate game. Export a save, or use cloud saves, to back it up or move it to another device.</p><div id="t-cloudbox"></div></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -520,7 +521,7 @@ function deleteSlot(n){
   try{for(const k of [SLOT_KEY(n),LOG_KEY(n),OLD_SLOT_KEY(n),OLD_LOG_KEY(n)])localStorage.removeItem(k);if(n===1)localStorage.removeItem(LEGACY_KEY);}catch(e){}
   if(isObj(window.__RATIDLE_SLOTS__))delete window.__RATIDLE_SLOTS__[n];
   if(n===1)window.__RATIDLE_SAVE__=null;
-  native({type:'deleteSlot',slot:n});
+  native({type:'deleteSlot',slot:n});unlinkCloud(n);
 }
 function save(){if(!slot||titleOpen)return;state.last=Date.now();state.pos={x:player.x,z:player.z};writeSlot(slot,state);saveLog();}
 const buildFrac=isle=>Math.min(1,(state.construction[isle]||0)/PROJECT_PTS);
@@ -1509,7 +1510,10 @@ function renderOpts(){
   <button class="btn" id="o-export">Export save (JSON)</button>
   <button class="btn" id="o-import">Import save into this slot</button>
   <button class="btn" id="o-slots">Switch save slot</button>
-  <button class="btn warn" id="o-reset">Delete this save</button>`;
+  <button class="btn warn" id="o-reset">Delete this save</button>
+  <p class="sect">Cloud save</p>
+  <p class="hint">${cloudStatus()}</p>
+  <button class="btn" id="o-cloud">${cloudButtonLabel()}</button>`;
   $('#o-auto').onchange=e=>setAuto(e.target.checked);
   $('#o-xp').onchange=e=>{s.xpRate=+e.target.value;save();};
   $('#o-px').onchange=e=>{s.pixel=+e.target.value;resize();save();};
@@ -1524,6 +1528,7 @@ function renderOpts(){
   $('#o-export').onclick=()=>openExport(slot);
   $('#o-import').onclick=()=>openImport(slot);
   $('#o-slots').onclick=()=>showTitle();
+  $('#o-cloud').onclick=()=>openCloud();
   const rb=$('#o-reset');let armed=false;
   rb.onclick=()=>{if(!armed){armed=true;rb.textContent='Click again to delete this save for good';setTimeout(()=>{armed=false;rb.textContent='Delete this save';},3000);return;}
     native({type:'focusEnd',completed:false});deleteSlot(slot);slot=null;showTitle();};
@@ -2483,9 +2488,9 @@ function renderTitle(){
     return `<div class="slot-card"><div class="sh"><span class="sn">Slot ${n}</span><span class="sm2">Played ${ago(Date.now()-v.last)}</span></div>
       <div class="st"><b>${esc(v.name)}</b> · Character level ${C} · Total level ${tot}<br>${v.gold.toLocaleString()} gp · ${esc(ISLANDS[v.island].name)}${run}</div>
       <div class="sb"><button class="btn go" data-play="${n}">Play</button><button class="btn" data-exp="${n}">Export</button><button class="btn" data-imp="${n}">Import</button><button class="btn warn" data-del="${n}">Delete</button></div></div>`;}).join('');
-  const el=$('#slots');
+  const el=$('#slots');renderCloudChoice();
   el.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>{sfx.init();const n=+b.dataset.play;loadInto(n,sanitize(readSlotRaw(n),{allowFocus:true}),true);});
-  el.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{sfx.init();loadInto(+b.dataset.new,freshState(),false);});
+  el.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{sfx.init();unlinkCloud(+b.dataset.new);loadInto(+b.dataset.new,freshState(),false);});
   el.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>openExport(+b.dataset.exp));
   el.querySelectorAll('[data-imp]').forEach(b=>b.onclick=()=>openImport(+b.dataset.imp));
   el.querySelectorAll('[data-del]').forEach(b=>{let armed=false;b.onclick=()=>{if(!armed){armed=true;b.textContent='Sure?';setTimeout(()=>{armed=false;b.textContent='Delete';},3000);return;}
@@ -2548,10 +2553,240 @@ function openImport(n){
 function doImport(n){
   const m=$('#im-msg');
   try{const v=parseImport($('#im-text').value);
-    $('#modal').hidden=true;
+    $('#modal').hidden=true;unlinkCloud(n);
     if(n===slot&&!titleOpen){native({type:'focusEnd',completed:false});applyState(v);save();msg('Save imported.','m-green');}
     else{writeSlot(n,v);if(titleOpen)renderTitle();}
   }catch(e){m.textContent=typeof e==='string'?e:'Something went wrong reading that save.';m.className='hint no';}
+}
+
+/* ================= CLOUD SAVES ================= */
+// Firebase (project ratidle-be, free Spark plan): email + password accounts and one Firestore document per slot at
+// users/{uid}/saves/{slot}, holding the same JSON as Export. It talks to the REST APIs directly so no SDK has to load.
+// firestore.rules only lets a player with a verified email read or write their own three slots, caps the size and
+// allows one write a minute.
+// Cloud saves are opt-in: until the player signs in nothing is sent, and they can turn it off for good (optionally
+// deleting their cloud copies and account), after which the game is local-only again.
+// Automatic uploads happen at most once every 8 hours and only while the game is in the foreground. Nothing is sent
+// while it's hidden; if the 8 hours ran out while it was away, the upload waits until the player is back.
+// Every upload is conditional on the cloud copy being the one this device last saw, so one device never silently
+// overwrites another's progress. Downloads go through parseImport(), like any other import.
+const FB={key:'__FIREBASE_API_KEY__',project:'ratidle-be'};
+const CLOUD_EVERY=8*3600e3,CLOUD_RETRY=15*60e3,CLOUD_MAX=100000,CLOUD_KEY='ratidle-cloud';
+const FS_DB=`projects/${FB.project}/databases/(default)`,FS_URL='https://firestore.googleapis.com/v1/'+FS_DB+'/documents';
+const AUTH_URL=`https://identitytoolkit.googleapis.com/v1/accounts:`;
+// {device, off (true: the player chose local-only, false: chose cloud, absent: hasn't chosen),
+//  user:{uid,email,refresh,verified}|null, links:{[slot]:{uid,t,at}}}: t is the cloud copy's updateTime this device
+// last wrote or restored, at is when (this device's clock) it last uploaded that slot.
+let cloud=(()=>{let c=null;try{const r=localStorage.getItem(CLOUD_KEY);if(r&&r.length<2e4)c=JSON.parse(r);}catch(e){}
+  const inj=window.__RATIDLE_CLOUD__;if(isObj(inj)&&(!isObj(c)||!isObj(c.user)&&isObj(inj.user)||c.off===undefined&&typeof inj.off==='boolean'))c=inj;
+  if(!isObj(c))c={};const u=c.user,links={};
+  if(isObj(c.links))for(const n of SLOTS){const l=c.links[n];if(isObj(l)&&typeof l.uid==='string'&&typeof l.t==='string')links[n]={uid:l.uid,t:l.t.slice(0,40),at:num(l.at,0,1e15,0)};}
+  const user=isObj(u)&&typeof u.uid==='string'&&typeof u.refresh==='string'&&typeof u.email==='string'?{uid:u.uid.slice(0,128),email:u.email.slice(0,200),refresh:u.refresh.slice(0,4000),verified:u.verified===true}:null;
+  return{device:typeof c.device==='string'&&/^[a-z0-9]{8,24}$/.test(c.device)?c.device:Math.random().toString(36).slice(2,12)+Date.now().toString(36),
+    ...(typeof c.off==='boolean'&&!user?{off:c.off}:user?{off:false}:{}),user,links};})();
+let cloudTok=null,cloudBusy=false,cloudFailAt=0,cloudConflict={},nativeActive=true;
+function storeCloud(){try{localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}catch(e){}native({type:'cloud',data:cloud});}
+const linkFor=n=>{const l=cloud.links[n];return l&&cloud.user&&l.uid===cloud.user.uid?l:null;};
+// A slot whose local game was replaced (new game, import, delete) must not overwrite its old cloud copy unasked.
+function unlinkCloud(n){if(cloud.links[n]){delete cloud.links[n];storeCloud();}delete cloudConflict[n];}
+const AUTH_ERR={EMAIL_EXISTS:'That email already has an account. Sign in instead.',INVALID_LOGIN_CREDENTIALS:'Wrong email or password.',
+  INVALID_PASSWORD:'Wrong email or password.',EMAIL_NOT_FOUND:'Wrong email or password.',INVALID_EMAIL:"That doesn't look like an email address.",
+  MISSING_PASSWORD:'Enter a password.',WEAK_PASSWORD:'Use a password of at least 6 characters.',USER_DISABLED:'That account has been disabled.',
+  TOO_MANY_ATTEMPTS_TRY_LATER:'Too many tries. Wait a bit and try again.',OPERATION_NOT_ALLOWED:'Cloud saves are switched off right now.'};
+async function cloudFetch(url,opts){
+  let r;try{r=await fetch(url,opts);}catch(e){throw 'Could not reach the cloud. Check your connection.';}
+  const j=await r.json().catch(()=>({}));if(r.ok)return j;
+  const code=String(j.error&&(j.error.message||j.error.status)||r.status).split(/[ :]/)[0];
+  throw {code,status:j.error&&j.error.status,http:r.status};
+}
+const postJSON=(url,body)=>cloudFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const cloudMsg=e=>typeof e==='string'?e:AUTH_ERR[e&&e.code]||(e&&e.http===403?'The cloud refused that. Wait a minute and try again.':'Something went wrong with the cloud. Try again later.');
+// The ID token's claims say whether the email has been verified; the rules check the same claim.
+const jwtClaims=t=>{try{return JSON.parse(atob(String(t).split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch(e){return{};}};
+function takeToken(id,secs){
+  cloudTok={id,exp:Date.now()+(+secs||3600)*1000};const v=jwtClaims(id).email_verified===true;
+  if(cloud.user&&cloud.user.verified!==v){cloud.user.verified=v;storeCloud();}
+}
+const sendVerifyEmail=idToken=>postJSON(AUTH_URL+'sendOobCode?key='+FB.key,{requestType:'VERIFY_EMAIL',idToken});
+async function cloudSignIn(email,password,create){
+  const j=await postJSON(AUTH_URL+(create?'signUp':'signInWithPassword')+'?key='+FB.key,{email,password,returnSecureToken:true});
+  // A different account means different cloud slots, so this device's links no longer apply.
+  if(!cloud.user||cloud.user.uid!==j.localId)cloud.links={};
+  cloud.user={uid:j.localId,email:j.email||email,refresh:j.refreshToken,verified:false};cloud.off=false;cloudConflict={};
+  takeToken(j.idToken,j.expiresIn);storeCloud();
+  if(create)await sendVerifyEmail(j.idToken).catch(()=>{});
+}
+function cloudSignOut(){cloud.user=null;cloud.links={};cloudTok=null;cloudConflict={};storeCloud();}
+// Local-only from here on: forget the account on this device and never contact the cloud until turned back on.
+function cloudTurnOff(){cloud.off=true;cloudSignOut();}
+// force: fetch a fresh ID token even if the current one is still good (to pick up a just-verified email).
+async function cloudToken(force){
+  if(!cloud.user)throw 'Sign in first.';
+  if(!force&&cloudTok&&cloudTok.exp-60e3>Date.now())return cloudTok.id;
+  let j;try{j=await cloudFetch(`https://securetoken.googleapis.com/v1/token?key=${FB.key}`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(cloud.user.refresh)});}
+  catch(e){if(typeof e!=='string'&&e.http>=400&&e.http<500&&e.http!==429){cloudSignOut();throw 'You were signed out of cloud saves. Sign in again.';}throw e;}
+  if(j.user_id!==cloud.user.uid){cloudSignOut();throw 'You were signed out of cloud saves. Sign in again.';}
+  if(j.refresh_token&&j.refresh_token!==cloud.user.refresh){cloud.user.refresh=j.refresh_token;storeCloud();}
+  takeToken(j.id_token,j.expires_in);return cloudTok.id;
+}
+// Upload slot n. Unless forced, the write only succeeds if the cloud copy is still the one this device last saw
+// (or there is none yet); otherwise it's a conflict and the player decides in the Cloud window.
+async function cloudUpload(n,force){
+  const raw=n===slot&&!titleOpen?(save(),state):readSlotRaw(n);if(!raw)throw 'That slot is empty.';
+  const v=sanitize(raw),data=exportText(v,n);if(data.length>CLOUD_MAX)throw 'That save is too large for the cloud.';
+  const tok=await cloudToken(),uid=cloud.user.uid,l=linkFor(n);
+  if(!cloud.user.verified)throw 'Verify your email first.';
+  const w={update:{name:`${FS_DB}/documents/users/${uid}/saves/${n}`,fields:{data:{stringValue:data},version:{integerValue:String(SAVE_VERSION)},
+    last:{integerValue:String(Math.floor(v.last))},device:{stringValue:cloud.device}}},updateTransforms:[{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]};
+  if(!force)w.currentDocument=l?{updateTime:l.t}:{exists:false};
+  let j;try{j=await cloudFetch(`${FS_URL}:commit`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({writes:[w]})});}
+  catch(e){if(!force&&e&&(e.status==='FAILED_PRECONDITION'||e.status==='ALREADY_EXISTS'||e.status==='NOT_FOUND')){cloudConflict[n]=true;throw 'conflict';}throw e;}
+  const t=j.writeResults&&j.writeResults[0]&&j.writeResults[0].updateTime||j.commitTime;
+  cloud.links[n]={uid,t:String(t),at:Date.now()};delete cloudConflict[n];storeCloud();
+}
+// The player's cloud slots: {[slot]:{v (sanitized save), t, last, device}}.
+async function cloudList(){
+  const tok=await cloudToken(),j=await cloudFetch(`${FS_URL}/users/${cloud.user.uid}/saves?pageSize=5`,{headers:{Authorization:'Bearer '+tok}}),out={};
+  for(const d of Array.isArray(j.documents)?j.documents:[]){const n=+String(d.name).split('/').pop(),f=d.fields||{};
+    if(!SLOTS.includes(n)||!f.data||typeof f.data.stringValue!=='string')continue;
+    try{out[n]={v:parseImport(f.data.stringValue),t:String(d.updateTime),last:num(+(f.last&&f.last.integerValue),0,1e15,0),
+      device:f.device&&f.device.stringValue};}catch(e){}}
+  return out;
+}
+// Deletes every cloud copy and then the account itself. Needs the password again, since Firebase only lets a
+// freshly signed-in account delete itself.
+async function cloudDeleteAll(password){
+  const j=await postJSON(AUTH_URL+'signInWithPassword?key='+FB.key,{email:cloud.user.email,password,returnSecureToken:true});
+  if(j.localId!==cloud.user.uid)throw 'That password is for a different account.';
+  // Unverified accounts can't have written anything, and the rules wouldn't let them delete either.
+  if(jwtClaims(j.idToken).email_verified===true)for(const n of SLOTS)
+    await cloudFetch(`${FS_URL}/users/${j.localId}/saves/${n}`,{method:'DELETE',headers:{Authorization:'Bearer '+j.idToken}});
+  await postJSON(AUTH_URL+'delete?key='+FB.key,{idToken:j.idToken});
+  cloudTurnOff();
+}
+// Automatic upload: only while the game is in front of the player, at most every 8 hours per slot, never mid-focus
+// (giving up rewinds the save, so the cloud mustn't keep the un-rewound progress).
+const cloudVisible=()=>!document.hidden&&nativeActive;
+function cloudTick(){
+  if(!cloud.user||!cloud.user.verified||!slot||titleOpen||cloudBusy||!cloudVisible()||focusing()||cloudConflict[slot])return;
+  const now=Date.now(),l=linkFor(slot);
+  if(l&&now>=l.at&&now-l.at<CLOUD_EVERY||now-cloudFailAt<CLOUD_RETRY)return;
+  const n=slot;cloudBusy=true;
+  cloudUpload(n,false).then(()=>{if(activeTab==='opts'&&!titleOpen)renderOpts();},e=>{
+    if(e==='conflict')msg(`The cloud copy of slot ${n} was changed on another device, so it wasn't overwritten. Open <b>Options › Cloud save</b> to choose which one to keep.`,'m-blue');
+    else cloudFailAt=Date.now();}).finally(()=>{cloudBusy=false;});
+}
+window.__ratidleActive=on=>{nativeActive=!!on;if(on)setTimeout(cloudTick,3000);};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(cloudTick,3000);});
+setInterval(cloudTick,60e3);
+function cloudStatus(){
+  if(!cloud.user)return cloud.off?'Cloud saves are off. Your saves stay on this device only.':'Sign in to back up your saves and play them on other devices. Optional: without it, saves stay on this device.';
+  if(!cloud.user.verified)return `Signed in as <b>${esc(cloud.user.email)}</b>.<br><span class="no">Verify your email to start backing up.</span>`;
+  const l=slot&&linkFor(slot);
+  return `Signed in as <b>${esc(cloud.user.email)}</b>.<br>`+(!slot?'':cloudConflict[slot]?`<span class="no">Slot ${slot} differs from its cloud copy. Open Cloud saves to choose.</span>`:
+    l?`Slot ${slot} last backed up ${ago(Date.now()-l.at)}. It backs up every 8 hours while you play.`:`Slot ${slot} backs up every 8 hours while you play.`);
+}
+const cloudButtonLabel=()=>cloud.user?'Cloud saves':cloud.off?'Turn on cloud saves':'Set up cloud saves';
+function cloudRerender(){if(titleOpen)renderTitle();else if(slot)renderOpts();}
+// The slot screen asks once whether to use cloud saves; after that it's a single button.
+function renderCloudChoice(){
+  const box=$('#t-cloudbox');if(!box)return;
+  if(!cloud.user&&cloud.off===undefined){
+    box.innerHTML=`<div class="slot-card"><div class="sh"><span class="sn">Cloud saves</span><span class="sm2">Optional</span></div>
+      <div class="st">Back up your slots and play them on other devices. Needs an email address. You can change your mind any time in Options.</div>
+      <div class="sb"><button class="btn go" id="t-cloud">Set up cloud saves</button><button class="btn" id="t-local">Keep saves on this device</button></div></div>`;
+    $('#t-local').onclick=()=>{cloud.off=true;storeCloud();renderTitle();};
+  }else box.innerHTML=`<button class="btn" id="t-cloud">${cloudButtonLabel()}</button>`;
+  $('#t-cloud').onclick=()=>openCloud();
+}
+function openCloudLogin(){
+  modal('Cloud save',`<p style="margin:0 0 8px">Sign in, or create an account with your email and a password, to back up your saves.</p>
+    <input class="field" id="cl-email" type="email" autocomplete="username" maxlength="200" placeholder="Email" aria-label="Email">
+    <input class="field" id="cl-pass" type="password" autocomplete="current-password" maxlength="200" placeholder="Password (6+ characters)" aria-label="Password">
+    <p class="hint" id="cl-msg"></p><button class="btn" id="cl-forgot" style="font-size:12px;padding:4px">Forgot password?</button>
+    <button class="btn" id="cl-local" style="font-size:12px;padding:4px">No thanks, keep my saves on this device only</button>`,
+    [{label:'Sign in',cls:'go',keep:true,fn:()=>go(false)},{label:'Create account',keep:true,fn:()=>go(true)},{label:'Cancel'}]);
+  const m=$('#cl-msg'),say=(t,bad)=>{m.textContent=t;m.className='hint'+(bad?' no':'');};
+  let busy=false;
+  async function go(create){
+    if(busy)return;const email=$('#cl-email').value.trim(),pw=$('#cl-pass').value;
+    if(!email||!pw){say('Enter your email and a password.',true);return;}
+    busy=true;say(create?'Creating your account…':'Signing in…');
+    try{await cloudSignIn(email,pw,create);$('#modal').hidden=true;cloudRerender();openCloud(create);}
+    catch(e){say(cloudMsg(e),true);}busy=false;
+  }
+  $('#cl-forgot').onclick=async()=>{const email=$('#cl-email').value.trim();if(!email){say('Enter your email first.',true);return;}
+    try{await postJSON(AUTH_URL+'sendOobCode?key='+FB.key,{requestType:'PASSWORD_RESET',email});say('If that email has an account, a reset link is on its way.');}
+    catch(e){say(cloudMsg(e),true);}};
+  $('#cl-local').onclick=()=>{cloud.off=true;storeCloud();$('#modal').hidden=true;cloudRerender();};
+}
+// Nothing is backed up until the email is verified: the rules refuse unverified accounts.
+function openCloudVerify(justSent){
+  modal('Verify your email',`<p style="margin:0 0 6px">${justSent?'We sent a link to':'Open the link we sent to'} <b>${esc(cloud.user.email)}</b> to finish setting up cloud saves, then press <b>I've verified</b>.</p>
+    <p class="hint">Can't find it? Check your spam folder, or send it again.</p><p class="hint" id="cl-msg"></p>`,
+    [{label:"I've verified",cls:'go',keep:true,fn:()=>check()},{label:'Send again',keep:true,fn:()=>resend()},{label:'Close'}]);
+  const m=$('#cl-msg'),say=(t,bad)=>{m.textContent=t;m.className='hint'+(bad?' no':'');};
+  let busy=false;
+  async function check(){if(busy)return;busy=true;say('Checking…');
+    try{await cloudToken(true);if(cloud.user.verified){$('#modal').hidden=true;cloudRerender();openCloud();setTimeout(cloudTick,3000);}
+      else say("That email isn't verified yet. Open the link in it first.",true);}
+    catch(e){say(cloudMsg(e),true);}busy=false;}
+  async function resend(){if(busy)return;busy=true;
+    try{await sendVerifyEmail(await cloudToken());say('Sent. It can take a minute to arrive.');}catch(e){say(cloudMsg(e),true);}busy=false;}
+}
+// Turning off keeps the cloud copies for later (just forgets the account here), or deletes them and the account.
+function openCloudOff(){
+  modal('Turn off cloud saves',`<p style="margin:0 0 6px">Your saves will stay on this device only, and nothing more is sent to the cloud.</p>
+    <p style="margin:0 0 6px">You can keep your cloud copies to sign back in to later, or delete them and your account for good.</p>`,
+    [{label:'Keep cloud copies',cls:'go',fn:()=>{cloudTurnOff();cloudRerender();}},{label:'Delete them',cls:'warn',keep:true,fn:()=>openCloudDelete()},{label:'Cancel'}]);
+}
+function openCloudDelete(){
+  modal('Delete cloud saves',`<p class="no" style="margin:0 0 6px">This deletes every cloud copy and your account (${esc(cloud.user.email)}). It can't be undone. Your saves on this device are kept.</p>
+    <input class="field" id="cl-pass" type="password" autocomplete="current-password" maxlength="200" placeholder="Password" aria-label="Password"><p class="hint" id="cl-msg"></p>`,
+    [{label:'Delete for good',cls:'warn',keep:true,fn:()=>go()},{label:'Cancel'}]);
+  const m=$('#cl-msg'),say=(t,bad)=>{m.textContent=t;m.className='hint'+(bad?' no':'');};
+  let busy=false;
+  async function go(){if(busy)return;const pw=$('#cl-pass').value;if(!pw){say('Enter your password.',true);return;}
+    busy=true;say('Deleting…');
+    try{await cloudDeleteAll(pw);$('#modal').hidden=true;cloudRerender();msg('Your cloud saves and account were deleted. Saves now stay on this device only.','m-green');}
+    catch(e){say(cloudMsg(e),true);}busy=false;}
+}
+// Lists the cloud slots with Restore buttons, plus uploading the slot being played.
+function openCloud(justCreated){
+  if(!cloud.user){openCloudLogin();return;}
+  if(!cloud.user.verified){openCloudVerify(justCreated===true);return;}
+  modal('Cloud saves',`<p style="margin:0 0 6px">Signed in as <b>${esc(cloud.user.email)}</b>.</p><div id="cl-list"><p class="hint">Loading…</p></div><p class="hint" id="cl-msg"></p>`,
+    [...(slot&&!titleOpen?[{label:`Upload slot ${slot}`,cls:'go',keep:true,fn:()=>upload()}]:[]),
+     {label:'Turn off',cls:'warn',keep:true,fn:()=>openCloudOff()},{label:'Close'}]);
+  const m=$('#cl-msg'),say=(t,bad)=>{m.textContent=t;m.className='hint'+(bad?' no':'');};
+  let list={},busy=false;
+  const draw=()=>{const el=$('#cl-list');if(!el)return;
+    el.innerHTML=SLOTS.map(n=>{const c=list[n],v=c&&c.v;
+      return `<div class="slot-card${c?'':' empty'}" style="text-align:left"><div class="sh"><span class="sn">Cloud slot ${n}</span><span class="sm2">${c?'Saved '+ago(Date.now()-c.last):'Empty'}</span></div>`+
+        (c?`<div class="st"><b>${esc(v.name)}</b> · Character level ${charLevelFor(v.fxp)} · ${v.gold.toLocaleString()} gp<br>${c.device===cloud.device?'From this device':'From another device'}${linkFor(n)&&linkFor(n).t===c.t?' · matches this slot':''}</div>
+          <div class="sb"><button class="btn" data-res="${n}">Restore to slot ${n}</button></div>`:'')+'</div>';}).join('');
+    el.querySelectorAll('[data-res]').forEach(b=>{let armed=false;b.onclick=()=>{const n=+b.dataset.res;
+      if(readSlotRaw(n)&&!armed){armed=true;b.textContent=`Replace local slot ${n}?`;setTimeout(()=>{armed=false;b.textContent=`Restore to slot ${n}`;},3000);return;}
+      restore(n);};});};
+  const refresh=()=>cloudList().then(l=>{list=l;draw();},e=>{const el=$('#cl-list');if(el)el.innerHTML='';say(cloudMsg(e),true);});
+  function restore(n){const c=list[n];if(!c)return;
+    const v=c.v;
+    if(n===slot&&!titleOpen){native({type:'focusEnd',completed:false});applyState(v);save();msg(`Slot ${n} restored from the cloud.`,'m-green');}
+    else writeSlot(n,v);
+    cloud.links[n]={uid:cloud.user.uid,t:c.t,at:Date.now()};delete cloudConflict[n];storeCloud();
+    $('#modal').hidden=true;cloudRerender();}
+  let armedUp=false;
+  async function upload(){
+    if(busy||!slot)return;const n=slot,c=list[n],l=linkFor(n);
+    // Overwriting a cloud copy this device didn't make (or hasn't seen) needs a second press.
+    if(c&&(!l||l.t!==c.t)&&!armedUp){armedUp=true;say(`The cloud copy of slot ${n} isn't this one. Press Upload again to replace it.`,true);return;}
+    busy=true;say('Uploading…');
+    try{await cloudUpload(n,armedUp);armedUp=false;say(`Slot ${n} uploaded.`);await refresh();if(!titleOpen)renderOpts();}
+    catch(e){say(e==='conflict'?'The cloud copy just changed. Check it and press Upload again.':cloudMsg(e),true);if(e==='conflict')await refresh();}
+    busy=false;
+  }
+  refresh();
 }
 
 /* ================= BOOT ================= */

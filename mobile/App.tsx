@@ -16,6 +16,9 @@ const slotKey = (n: number) => `ratidle-save-slot-${n}`;
 const oldSlotKey = (n: number) => `timberline-save-slot-${n}`;
 const MAX_SAVE_BYTES = 2_000_000;
 const FOCUS_NOTIF_KEY = 'ratidle-focus-notification';
+// Cloud-save sign-in and sync bookkeeping. The game owns its shape and re-checks it on load.
+const CLOUD_KEY = 'ratidle-cloud';
+const MAX_CLOUD_BYTES = 20_000;
 
 // While the app is open the game shows its own "Focus complete" window, so stay quiet in the foreground.
 Notifications.setNotificationHandler({
@@ -53,6 +56,7 @@ type Slots = Partial<Record<number, unknown>>;
 type GameMessage =
   | { type: 'save'; slot: number; data: unknown }
   | { type: 'deleteSlot'; slot: number }
+  | { type: 'cloud'; data: unknown }
   | { type: 'export'; json: string; name: string }
   | { type: 'haptic'; style: 'medium' | 'success' }
   | { type: 'focusStart'; endsAt: number; minutes: number }
@@ -74,6 +78,7 @@ export default function App() {
   const webRef = useRef<WebView<object>>(null);
   // Latest copy of every save slot, handed to the game whenever the web view (re)loads.
   const slotsRef = useRef<Slots>({});
+  const cloudRef = useRef<unknown>(null);
   const [ready, setReady] = useState(false);
   const [gameKey, setGameKey] = useState(0);
 
@@ -81,7 +86,7 @@ export default function App() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     (async () => {
       try {
-        const pairs = await AsyncStorage.multiGet([...SLOTS.map(slotKey), ...SLOTS.map(oldSlotKey), LEGACY_KEY]);
+        const pairs = await AsyncStorage.multiGet([...SLOTS.map(slotKey), ...SLOTS.map(oldSlotKey), LEGACY_KEY, CLOUD_KEY]);
         const slots: Slots = {};
         SLOTS.forEach((n, i) => {
           const v = parseSave(pairs[i][1]) ?? parseSave(pairs[SLOTS.length + i][1]);
@@ -93,6 +98,8 @@ export default function App() {
           if (legacy) slots[1] = legacy;
         }
         slotsRef.current = slots;
+        const cloud = pairs[2 * SLOTS.length + 1][1];
+        cloudRef.current = cloud && cloud.length <= MAX_CLOUD_BYTES ? parseSave(cloud) : null;
       } catch {
         slotsRef.current = {};
       }
@@ -102,12 +109,13 @@ export default function App() {
 
   // When the app leaves the foreground the rat walks to the campfire to read (and the game saves).
   // 'inactive' fires first on iOS, so the walk starts before the app is suspended.
+  // __ratidleActive tells the game's cloud sync it's in the background, so it never uploads from there.
   useEffect(() => {
     const sub = AppState.addEventListener('change', s => {
       const web = webRef.current;
       if (!web) return;
-      if (s === 'active') web.injectJavaScript('window.__ratidleRest && window.__ratidleRest(false); true;');
-      else web.injectJavaScript('window.__ratidleRest && window.__ratidleRest(true); window.__ratidleSave && window.__ratidleSave(); true;');
+      if (s === 'active') web.injectJavaScript('window.__ratidleActive && window.__ratidleActive(true); window.__ratidleRest && window.__ratidleRest(false); true;');
+      else web.injectJavaScript('window.__ratidleActive && window.__ratidleActive(false); window.__ratidleRest && window.__ratidleRest(true); window.__ratidleSave && window.__ratidleSave(); true;');
     });
     return () => sub.remove();
   }, []);
@@ -130,6 +138,11 @@ export default function App() {
       delete slotsRef.current[msg.slot];
       AsyncStorage.multiRemove([slotKey(msg.slot), oldSlotKey(msg.slot)]).catch(() => {});
       if (msg.slot === 1) AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+    } else if (msg.type === 'cloud') {
+      const json = JSON.stringify(msg.data ?? null);
+      if (!msg.data || typeof msg.data !== 'object' || json.length > MAX_CLOUD_BYTES) return;
+      cloudRef.current = msg.data;
+      AsyncStorage.setItem(CLOUD_KEY, json).catch(() => {});
     } else if (msg.type === 'export') {
       if (typeof msg.json !== 'string') return;
       Share.share({ message: msg.json, title: typeof msg.name === 'string' ? msg.name : 'RatIdle save' }).catch(() => {});
@@ -158,7 +171,7 @@ export default function App() {
             style={styles.web}
             source={{ html: GAME_HTML, baseUrl: 'https://ratidle.local/' }}
             originWhitelist={['*']}
-            injectedJavaScriptBeforeContentLoaded={`window.__RATIDLE_SLOTS__ = ${JSON.stringify(slotsRef.current)}; true;`}
+            injectedJavaScriptBeforeContentLoaded={`window.__RATIDLE_SLOTS__ = ${JSON.stringify(slotsRef.current)}; window.__RATIDLE_CLOUD__ = ${JSON.stringify(cloudRef.current)}; true;`}
             onMessage={onMessage}
             // iOS can kill a backgrounded web view; reload it with the latest saves.
             onContentProcessDidTerminate={() => setGameKey(k => k + 1)}

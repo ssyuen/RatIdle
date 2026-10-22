@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Cloud saves for RatIdle. Each signed-in player can only touch their own three save slots:
+// users/{uid}/saves/{1|2|3}, and only once they've verified their email address. Everything else is closed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true;
+    }
+
+    function validSlot(slot) {
+      return slot in ['1', '2', '3'];
+    }
+
+    // A save is the game's export JSON as a string plus a little metadata for the slot list.
+    // The size cap keeps every account well inside the free tier (a maxed save is about 6 KB).
+    function validSave() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['data', 'version', 'last', 'device', 'updatedAt'])
+        && d.keys().hasAll(['data', 'version', 'last', 'device', 'updatedAt'])
+        && d.data is string && d.data.size() > 0 && d.data.size() <= 100000
+        && d.version is int && d.version >= 1 && d.version <= 1000
+        && d.last is int && d.last >= 0
+        && d.device is string && d.device.size() <= 40
+        && d.updatedAt == request.time;
+    }
+
+    match /users/{uid}/saves/{slot} {
+      // Listing can't check {slot}, but only slots 1-3 can ever be written.
+      allow list: if signedIn(uid);
+      allow get, delete: if signedIn(uid) && validSlot(slot);
+      allow create: if signedIn(uid) && validSlot(slot) && validSave();
+      // At most one upload per slot per minute, so a stuck client can't burn through the daily write quota.
+      allow update: if signedIn(uid) && validSlot(slot) && validSave()
+        && request.time > resource.data.updatedAt + duration.value(60, 's');
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

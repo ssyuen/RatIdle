@@ -61,11 +61,13 @@ from.
 The game posts messages through `window.ReactNativeWebView`:
 
 - `save` stores a save slot (1–3) in AsyncStorage. The app passes all slots back in as `window.__RATIDLE_SLOTS__` when the game loads.
+- `cloud` stores the cloud-save sign-in and sync state in AsyncStorage, passed back in as `window.__RATIDLE_CLOUD__`.
 - `deleteSlot` removes a slot. `export` opens the system Share sheet with the save's JSON.
 - `haptic` triggers a buzz on long-press, level-ups and rare drops.
 - `focusStart` / `focusEnd` schedule and cancel the "Focus complete" notification.
 
-When the app goes to the background, it asks the game to save.
+When the app goes to the background, it asks the game to save, and tells it (`__ratidleActive`) so cloud saves pause until
+the app is back in front.
 
 ## Save slots and import
 
