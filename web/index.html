@@ -436,6 +436,7 @@ const ITEMS={
   magic_logs:  {name:'Magic logs',  ex:'Logs made from magical wood. They hum softly.', icon:['log','#4f7584','#a8f4ec',true],value:TIER_VAL[5],kind:'raw'},
   bird_nest:   {name:'Bird nest',   ex:"A bird's nest that fell from a tree. Search it for a tree seed, or sometimes a gold ring.", icon:['nest'], act:'Search',value:10},
   clue_scroll: {name:'Clue scroll', ex:'A scrap of paper with a riddle on it. Read it to see what it says.',           icon:['scroll'], act:'Read',value:50},
+  coins:       {name:'Coins',       ex:'Gold pieces. The Shop takes them from your bank first, then your pack.', icon:['coin','#ffcf40'], stack:true},
   ancient_coin:{name:'Ancient coin',ex:'An old coin, worn smooth by centuries. Hazel collects them.', icon:['coin','#e8c050'], stack:true,value:20},
   golden_acorn:{name:'Golden acorn',ex:'A gleaming acorn of solid gold, found while chopping. Extremely rare.', icon:['acorn','#ffd84a','#b88a10'], act:'Admire',value:500},
   gold_ring:   {name:'Gold ring',   ex:'Found in a bird nest. Some bird had very good taste.',         icon:['jewel','ring','#f0c840'],value:150},
@@ -589,7 +590,7 @@ const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
 function freshState(){return{name:randomName(),skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
   stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:25,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false,bankSort:false,tutorialDone:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:30,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false,bankSort:false,tutorialDone:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
   outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},npcs:{},xpv:XP_CURVE,focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -609,7 +610,7 @@ function sanitize(raw,opts={}){
   f.fxp=int(s.fxp,0,1e9,0);f.gold=int(s.gold,0,1e9,0);
   if(Array.isArray(s.inv))f.inv=Array.from({length:28},(_,i)=>{const x=s.inv[i];
     if(!isObj(x)||typeof x.id!=='string'||!own(ITEMS,x.id))return null;return{id:x.id,q:ITEMS[x.id].stack?int(x.q,1,1e9,1):1};});
-  f.bank=countMap(s.bank,ITEMS);
+  f.bank=countMap(s.bank,ITEMS);delete f.bank.coins;   // banked coins are the gold total
   if(isObj(s.stats)){const t=s.stats;
     f.stats.got=countMap(t.got,ITEMS);
     if(isObj(t.logs)){const l=countMap(t.logs,ITEMS);for(const k in l)f.stats.got[k]=(f.stats.got[k]||0)+l[k];}
@@ -622,7 +623,7 @@ function sanitize(raw,opts={}){
   if(isObj(s.settings)){const t=s.settings,g=f.settings;
     g.auto=t.auto===true;g.sound=t.sound!==false;g.hideMenus=t.hideMenus===true;
     g.xpRate=[1,2,5].includes(t.xpRate)?t.xpRate:2;g.pixel=[1,2,3,4].includes(t.pixel)?t.pixel:2;
-    g.focusMin=int(t.focusMin,5,120,25);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
+    g.focusMin=int(t.focusMin,5,120,30);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
     g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
     g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;g.hideLog=t.hideLog===true;g.bankSort=t.bankSort===true;
     // Saves from before the tutorial existed belong to players who already know the game.
@@ -845,12 +846,20 @@ const BENCH={kind:'bench',name:'Log bench',ex:'A log by the fire. Sit on it to r
 const HEARTH_STOOL={kind:'hstool',name:'Reading stool',ex:'Your stool by the hearth. Sit on it to read your book. The best seat in the house.'};
 const FURNACE={kind:'furnace',name:'Furnace',x:4.2,z:-3.0,r:1.0,reach:1.6,ex:'A stone furnace and anvil. Smelt 2 ore into a piece of jewellery here.'};
 const TRADER={kind:'trader',name:'Hazel the trader',x:-4.2,z:.6,r:1.1,reach:1.7,ex:'Hazel rows between the islands with the same stall. She buys what you bring her and pays most for jewellery and cooked fish.'};
-const BOAT={kind:'boat',name:'Rowing boat',x:0,z:42.4,r:0,reach:4.6,ex:'A little rowing boat. Travel in it to any island you have unlocked.'};
+const BOAT={kind:'boat',name:'Rowing boat',x:0,z:45.4,r:0,reach:4.6,ex:'A little rowing boat. Travel in it to any island you have unlocked.'};
 const SITE={kind:'site',name:'Hut',x:-3.8,z:6.8,r:1.9,reach:2.5,ex:''};
 const DOCK={kind:'dock',name:'Dock',ex:'A wooden jetty. Walk out to the end to fish the deeper water off its side.'};
 // The jetty's walkable top, and where the rat stands at its end to fish.
-const DOCK_Y=WATER_Y+.55,DOCK_STAND={x:.6,z:40.5},DOCK_SPOT={x:2.8,z:41.6};
-const onDock=(x,z)=>Math.abs(x)<=.9&&z>=35.3&&z<=41;
+const DOCK_Y=WATER_Y+.55;
+// A fishing spot off each end of the platform, fished from where the rat stands at that end.
+const DOCK_SPOTS=[{x:-7.9,z:42.25,stand:{x:-5.6,z:42.25}},{x:7.9,z:42.25,stand:{x:5.6,z:42.25}}];
+const onDock=(x,z)=>(Math.abs(x)<=.9&&z>=35.3&&z<=41.6)||(Math.abs(x)<=6.05&&z>=40.9&&z<=43.65);
+// The nearest walkable point on the dock: on the walkway or on the platform.
+function dockSnap(x,z){const a={x:clamp(x,-.7,.7),z:clamp(z,30,41.4)},b={x:clamp(x,-5.8,5.8),z:clamp(z,41.1,43.4)};
+  return Math.hypot(a.x-x,a.z-z)<=Math.hypot(b.x-x,b.z-z)?a:b;}
+const dockDist=(x,z)=>{const p=dockSnap(x,z);return Math.hypot(p.x-x,p.z-z);};
+// Where a point is: on land, on the walkway, or out on the platform.
+const dockPart=(x,z)=>Math.hypot(x,z)<=ISLAND-2.3?'land':z>=41.05&&Math.abs(x)>.75?'plat':'stem';
 const CABIN={kind:'cabin',name:'Log cabin',x:-8,z:-7,r:2.4,reach:.6,ex:'Your log cabin. Home sweet home. Go in to place the furniture you build from logs.'};
 let fireFlames=[],fireLight=null,boatMesh=null,chimney=null,furnaceGlow=null,hazel=null;
 function buildChest(){
@@ -928,8 +937,6 @@ function buildTrader(){
   h.position.set(0,0,-.35);g.add(h);hazel=h;
   g.position.set(TRADER.x,height(TRADER.x,TRADER.z),TRADER.z);g.rotation.y=Math.atan2(-TRADER.x,-TRADER.z+3);tagEnt(g,TRADER);pickRoot.add(g);
 }
-// Villagers stand in a half ring on the far side of the hut, always in the same five places.
-const NPC_SPOTS=[90,135,180,225,270].map(d=>{const a=d*Math.PI/180;return{x:SITE.x+Math.cos(a)*3.3,z:SITE.z+Math.sin(a)*3.3};});
 const NPC_FUR=['#8e8378','#5a4a3e','#d8d0c4','#a87a50','#3a3634','#c8b090','#9a8a8a'];
 const NPC_SHIRT={woodcutting:'#4a7a3a',mining:'#6a6a7a',fishing:'#2a6ab0',smithing:'#4a3a3a',cooking:'#ece8de'};
 // The same rat as the player, simpler, in a different coat, outfit and hat for its isle and its skill.
@@ -937,7 +944,7 @@ function buildRatNpc(isle,j){
   const sk=npcSkill(isle,j),i=ISLAND_ORDER.indexOf(isle),fur=NPC_FUR[(i*2+j)%NPC_FUR.length],fur2=shade(fur,.12),pink='#e8a0a8',shirt=NPC_SHIRT[sk];
   const pal=ISLANDS[isle].pal,pants=shade(pal.dirt,-.04),g=new THREE.Group(),body=new THREE.Group();g.add(body);
   const add=(geo,c,x,y,z,to=body)=>{const m=mesh(geo,c,x,y,z);to.add(m);return m;};
-  for(const sx of[-1,1]){add(new THREE.BoxGeometry(.24,.62,.26),pants,sx*.15,.6,0);add(new THREE.BoxGeometry(.22,.1,.3),'#3a2a1a',sx*.15,.05,.03);}
+  const legs=[-1,1].map(sx=>{const L=new THREE.Group();L.position.set(sx*.15,.9,0);add(new THREE.BoxGeometry(.24,.62,.26),pants,0,-.3,0,L);add(new THREE.BoxGeometry(.22,.1,.3),'#3a2a1a',0,-.85,.03,L);body.add(L);return L;});
   add(new THREE.BoxGeometry(.64,.78,.42),shirt,0,1.29,0);add(new THREE.BoxGeometry(.66,.1,.44),pal.bush,0,.96,0);
   if(sk==='cooking'||sk==='smithing')add(new THREE.BoxGeometry(.5,.62,.04),sk==='cooking'?'#ffffff':'#6a4a2a',0,1.12,.23);
   for(const sx of[-1,1]){const arm=new THREE.Group();arm.position.set(sx*.42,1.6,0);arm.rotation.z=sx*.1;
@@ -954,21 +961,46 @@ function buildRatNpc(isle,j){
   else if(sk==='fishing'){add(new THREE.CylinderGeometry(.24,.3,.2,8),'#c8b07a',0,.3,0,head);add(new THREE.CylinderGeometry(.38,.38,.03,10),'#b89a60',0,.21,0,head);}
   else if(sk==='smithing')add(new THREE.BoxGeometry(.47,.08,.45),'#c0392b',0,.12,0,head);
   else{add(new THREE.CylinderGeometry(.2,.2,.22,8),'#ffffff',0,.32,0,head);add(new THREE.IcosahedronGeometry(.25,0),'#ffffff',0,.5,0,head);}
-  return{g,head};
+  return{g,head,legs};
 }
 let npcs=[];
+// Somewhere to stand by the thing a villager's skill works with: a tree, a rock, the shore by the fish, the furnace or the fire.
+// It stands on the island side of it, clear of anything solid, and looks at it.
+function npcTarget(e){
+  const sk=npcSkill(e.isle,e.j),pickOne=a=>a.length?a[randi(0,a.length-1)]:null;
+  const near=(o,r)=>{const a=Math.atan2(-o.z,-o.x)+rand(-1.1,1.1);return{x:o.x+Math.cos(a)*r,z:o.z+Math.sin(a)*r,lx:o.x,lz:o.z};};
+  for(let k=0;k<10;k++){let t=null;
+    if(sk==='woodcutting'){const o=pickOne(trees.filter(t=>t.state==='alive'));if(o)t=near(o,o.cr+1.3);}
+    else if(sk==='mining'){const o=pickOne(rocks);if(o)t=near(o,1.7);}
+    else if(sk==='fishing'){const o=pickOne(fishAreas.flat());if(o){const f=(ISLAND-4)/Math.hypot(o.x,o.z);t={x:o.x*f+rand(-1,1),z:o.z*f+rand(-1,1),lx:o.x,lz:o.z};}}
+    else t=near(sk==='smithing'?FURNACE:FIRE,sk==='smithing'?2.4:2.1);
+    if(!t)t={x:SITE.x+rand(-3,3),z:SITE.z+rand(2.5,4),lx:SITE.x,lz:SITE.z};
+    if(Math.hypot(t.x,t.z)>ISLAND-3.2||height(t.x,t.z)<WATER_Y+.3)continue;
+    if(obstacles.some(o=>o.kind!=='npc'&&Math.hypot(o.x-t.x,o.z-t.z)<o.r+.7)||trees.some(o=>o.r>0&&Math.hypot(o.x-t.x,o.z-t.z)<o.r+.5))continue;
+    return t;}
+  return{x:e.x,z:e.z,lx:e.x+Math.sin(e.face),lz:e.z+Math.cos(e.face)};
+}
 function spawnNpcs(fresh){
   for(const n of npcs){pickRoot.remove(n.g);disposeGroup(n.g);const k=obstacles.indexOf(n);if(k>=0)obstacles.splice(k,1);}npcs=[];
   const isle=state.island,cnt=state.npcs[isle]||0;
-  for(let j=0;j<cnt;j++){const p=NPC_SPOTS[j],m=buildRatNpc(isle,j),[name,line]=NPC_DATA[isle][j],face=Math.atan2(p.x-SITE.x,p.z-SITE.z);
-    const e={kind:'npc',isle,j,name,line,x:p.x,z:p.z,r:.4,reach:1.5,g:m.g,head:m.head,face,base:face};
-    m.g.position.set(p.x,height(p.x,p.z),p.z);m.g.rotation.y=face;tagEnt(m.g,e);pickRoot.add(m.g);obstacles.push(e);npcs.push(e);
-    if(fresh&&j===cnt-1)puff(p.x,height(p.x,p.z)+1,p.z,'#fff0b0');}
+  for(let j=0;j<cnt;j++){const m=buildRatNpc(isle,j),[name,line]=NPC_DATA[isle][j];
+    const e={kind:'npc',isle,j,name,line,x:SITE.x,z:SITE.z,r:.4,reach:1.5,g:m.g,head:m.head,legs:m.legs,face:0,walkT:0,wait:rand(3,20)};
+    const t=npcTarget(e);e.x=t.x;e.z=t.z;e.t=t;e.face=Math.atan2(t.lx-t.x,t.lz-t.z);
+    m.g.position.set(e.x,height(e.x,e.z),e.z);m.g.rotation.y=e.face;tagEnt(m.g,e);pickRoot.add(m.g);obstacles.push(e);npcs.push(e);
+    if(fresh&&j===cnt-1)puff(e.x,height(e.x,e.z)+1,e.z,'#fff0b0');}
 }
-// Villagers look about, and turn to face the rat when it comes close.
-function updateNpcs(dt,T){for(const e of npcs){const d=Math.hypot(player.x-e.x,player.z-e.z);
-  const want=d<5?Math.atan2(player.x-e.x,player.z-e.z):e.base+Math.sin(T*.25+e.j*1.7)*.6;
-  e.face=angLerp(e.face,want,dt*3);e.g.rotation.y=e.face;e.head.rotation.x=Math.sin(T*1.3+e.j)*.06;e.g.children[0].position.y=Math.abs(Math.sin(T*1.1+e.j))*.02;}}
+// Villagers potter between the resources they help with: walk to one, watch it a while, then wander to another.
+// They stop and turn to the rat when it comes close.
+function updateNpcs(dt,T){for(const e of npcs){
+  const d=Math.hypot(player.x-e.x,player.z-e.z),t=e.t;let walking=false,want;
+  if(d<3.2||e.hold>0){e.hold=Math.max(0,(e.hold||0)-dt);want=Math.atan2(player.x-e.x,player.z-e.z);}
+  else{const dx=t.x-e.x,dz=t.z-e.z,dd=Math.hypot(dx,dz);
+    if(dd>.08){const st=Math.min(dd,1.25*dt);e.x+=dx/dd*st;e.z+=dz/dd*st;want=Math.atan2(dx,dz);walking=true;}
+    else{want=Math.atan2(t.lx-e.x,t.lz-e.z)+Math.sin(T*.3+e.j*1.7)*.35;if((e.wait-=dt)<=0){e.t=npcTarget(e);e.wait=rand(12,28);}}}
+  e.face=angLerp(e.face,want,dt*(walking?6:3));e.walkT+=walking?dt*7:0;const sw=walking?Math.sin(e.walkT)*.6:0;
+  e.legs[0].rotation.x=lerp(e.legs[0].rotation.x,sw,Math.min(1,dt*12));e.legs[1].rotation.x=lerp(e.legs[1].rotation.x,-sw,Math.min(1,dt*12));
+  e.g.position.set(e.x,height(e.x,e.z),e.z);e.g.rotation.y=e.face;e.head.rotation.x=Math.sin(T*1.3+e.j)*.06;
+  e.g.children[0].position.y=walking?Math.abs(Math.cos(e.walkT))*.05:Math.abs(Math.sin(T*1.1+e.j))*.02;}}
 function talkNpc(e){
   const S=SKILLS[npcSkill(e.isle,e.j)].name,tip=boostText(e.isle,e.j);
   const lines=[e.line,`I'm a ${S.toLowerCase()} rat, through and through. And now that the ${ISLANDS[e.isle].name} hut is up, I've got somewhere to live!`,
@@ -1013,11 +1045,14 @@ function takeFloor(f){useAt(f.x,f.z,.8,()=>{
   if(!floorItems.includes(f)){msg('It has gone.');return;}
   const d=ITEMS[f.id];let n=0;if(d.stack){if(addItem(f.id,f.q))n=f.q;}else while(n<f.q&&addItem(f.id,1))n++;
   if(!n){msg("You don't have enough inventory space.");return;}
-  f.q-=n;if(f.q<=0)removeFloor(f);sfx.item();msg(`You pick up ${n>1?n.toLocaleString()+' ':art(d.name)+' '}${esc(d.name.toLowerCase())}.`);});}
+  f.q-=n;if(f.q<=0)removeFloor(f);sfx.item();updateHud();msg(`You pick up ${n>1?n.toLocaleString():/s$/i.test(d.name)?'some':art(d.name)} ${esc(d.name.toLowerCase())}.`);});}
 function buildDock(){
   const g=new THREE.Group(),y=WATER_Y+.5;
-  for(let i=0;i<11;i++)g.add(mesh(new THREE.BoxGeometry(1.7,.1,.46),i%2?'#8a6236':'#7a5530',0,y,35.6+i*.5));
-  for(const x of[-.8,.8])for(const z of[36,38.4,40.6])g.add(mesh(new THREE.CylinderGeometry(.09,.09,1.6,5),'#5a3e22',x,y-.7,z));
+  for(let i=0;i<12;i++)g.add(mesh(new THREE.BoxGeometry(1.7,.1,.46),i%2?'#8a6236':'#7a5530',0,y,35.6+i*.5));
+  for(let i=0;i<26;i++)g.add(mesh(new THREE.BoxGeometry(.46,.1,2.7),i%2?'#8a6236':'#7a5530',-5.75+i*.46,y,42.25));
+  for(const x of[-.8,.8])for(const z of[36,38.4])g.add(mesh(new THREE.CylinderGeometry(.09,.09,1.6,5),'#5a3e22',x,y-.7,z));
+  for(const x of[-5.9,-3,0,3,5.9])for(const z of[41,43.5])g.add(mesh(new THREE.CylinderGeometry(.1,.1,1.7,5),'#5a3e22',x,y-.6,z));
+  for(const x of[-5.75,5.75])for(const z of[41.1,43.4])g.add(mesh(new THREE.CylinderGeometry(.12,.14,.4,6),'#4a3420',x,y+.25,z));
   tagEnt(g,DOCK);pickRoot.add(g);
   const b=new THREE.Group();
   b.add(mesh(new THREE.BoxGeometry(1.25,.38,2.5),'#8a5a2e',0,.15,0),mesh(new THREE.BoxGeometry(1.0,.1,2.2),'#6a4422',0,.28,0));
@@ -1221,7 +1256,6 @@ function clearAt(x,z,minD,ignore){
   for(const t of rocks)if(t!==ignore&&Math.hypot(t.x-x,t.z-z)<minD+t.cr)return false;
   for(const o of obstacles)if(Math.hypot(o.x-x,o.z-z)<o.r+1.4)return false;
   if(Math.abs(x)<1.6&&z>30)return false;
-  for(const p of NPC_SPOTS)if(Math.hypot(p.x-x,p.z-z)<minD+.6)return false;
   return true;
 }
 function findSpot(rmin,rmax,minD){
@@ -1515,7 +1549,7 @@ function leaveCabin(quiet){
   if(!quiet)msg('You head back outside.');renderTab();save();
 }
 function showLocation(){
-  const c=inCabin();interiorRoot.visible=c;worldRoot.visible=!c;pickRoot.visible=!c;water.visible=!c;groundRoot.visible=!c;for(const sh of ships)sh.g.visible=!c;
+  const c=inCabin();interiorRoot.visible=c;worldRoot.visible=!c;pickRoot.visible=!c;water.visible=!c;for(const sh of ships)sh.g.visible=!c;
   for(const cl of clouds)cl.visible=!c;
   if(c)buildInterior();else{disposeGroup(interiorRoot);interiorRoot.add(intPick);walls=[];}
   if(pet){pet.x=player.x;pet.z=player.z;}
@@ -1631,8 +1665,11 @@ function addItem(id,qty=1){
   if(!def.stack&&qty>1)return addItem(id,qty-1)||true;
   renderInv();return true;
 }
-function bankAdd(id,q){state.bank[id]=(state.bank[id]||0)+q;}
-function countOwned(id){return(state.bank[id]||0)+state.inv.reduce((a,s)=>a+(s&&s.id===id?s.q:0),0);}
+// Your gold is the coins in your bank. Coins can also be withdrawn, carried, dropped and picked up like any item.
+function bankAdd(id,q){if(id==='coins'){state.gold+=q;return;}state.bank[id]=(state.bank[id]||0)+q;}
+const bankQty=id=>id==='coins'?state.gold:state.bank[id]||0;
+function countOwned(id){return bankQty(id)+state.inv.reduce((a,s)=>a+(s&&s.id===id?s.q:0),0);}
+const gpTotal=()=>countOwned('coins');
 function consume(id,n,bankFirst){
   let left=n;
   const fromBank=()=>{const b=Math.min(left,state.bank[id]||0);state.bank[id]=(state.bank[id]||0)-b;if(state.bank[id]<=0)delete state.bank[id];left-=b;};
@@ -1662,8 +1699,11 @@ function itemOpts(i){
   o.push({a:'Examine',t,tc,fn:()=>msg(itemEx(s.id))});
   return o;
 }
-function dropSlot(i){const s=state.inv[i];if(!s)return;state.inv[i]=null;renderInv();msg(`You drop the ${esc(ITEMS[s.id].name.toLowerCase())}.`);}
-function dropAll(id){let n=0;state.inv.forEach((s,i)=>{if(s&&s.id===id){state.inv[i]=null;n++;}});renderInv();msg(`You drop ${n} ${esc(ITEMS[id].name.toLowerCase())}.`);}
+// Dropped things land at your feet, where you (or nobody) can pick them up again for 3 minutes.
+const dropAtFeet=(id,q)=>dropFloor(id,q,player.x+rand(-.3,.3),player.z+rand(-.3,.3));
+function dropSlot(i){const s=state.inv[i];if(!s)return;state.inv[i]=null;dropAtFeet(s.id,s.q);renderInv();updateHud();
+  msg(`You drop ${s.q>1?s.q.toLocaleString()+' '+esc(ITEMS[s.id].name.toLowerCase()):'the '+esc(ITEMS[s.id].name.toLowerCase())}.`);}
+function dropAll(id){let n=0;state.inv.forEach((s,i)=>{if(s&&s.id===id){state.inv[i]=null;n+=s.q;}});if(n)dropAtFeet(id,n);renderInv();updateHud();msg(`You drop ${n} ${esc(ITEMS[id].name.toLowerCase())}.`);}
 function searchNest(i){
   const tot=NEST_TABLE.reduce((a,b)=>a+b[1],0);let r=Math.random()*tot,pick=NEST_TABLE[0][0];
   for(const [id,w] of NEST_TABLE){if((r-=w)<0){pick=id;break;}}
@@ -1687,11 +1727,11 @@ function depositAll(){
   renderInv();if(activeTab==='bank')renderBank();msg(n?'You deposit your items into the bank chest.':'You have nothing to deposit.');if(n)sfx.item();
 }
 function nearChest(){return!inCabin()&&Math.hypot(player.x-CHEST.x,player.z-CHEST.z)<CHEST.reach+1.2;}
-const BANK_GROUPS=[['Logs',id=>itemSkill(id)==='woodcutting'],['Ore',id=>itemSkill(id)==='mining'],['Jewellery',id=>itemSkill(id)==='smithing'],
+const BANK_GROUPS=[['Coins',id=>id==='coins'],['Logs',id=>itemSkill(id)==='woodcutting'],['Ore',id=>itemSkill(id)==='mining'],['Jewellery',id=>itemSkill(id)==='smithing'],
   ['Raw fish',id=>itemSkill(id)==='fishing'],['Cooked fish',id=>itemSkill(id)==='cooking'],['Seeds',id=>!!ITEMS[id].plant],['Treasures',()=>true]];
 function renderBank(){
-  const ids=Object.keys(ITEMS).filter(id=>state.bank[id]),sorted=state.settings.bankSort;
-  const cell=id=>`<div class="slot" data-b="${id}" data-tip="${esc(ITEMS[id].name)} ×${state.bank[id].toLocaleString()}"><img alt="${esc(ITEMS[id].name)}" src="${iconURL(id)}"><span class="qty">${short(state.bank[id])}</span></div>`;
+  const ids=Object.keys(ITEMS).filter(id=>bankQty(id)>0),sorted=state.settings.bankSort;
+  const cell=id=>`<div class="slot" data-b="${id}" data-tip="${esc(ITEMS[id].name)} ×${bankQty(id).toLocaleString()}"><img alt="${esc(ITEMS[id].name)}" src="${iconURL(id)}"><span class="qty">${short(bankQty(id))}</span></div>`;
   let grid='';
   if(sorted){const left=new Set(ids);for(const [g,f] of BANK_GROUPS){const m=ids.filter(id=>left.has(id)&&f(id));if(!m.length)continue;m.forEach(id=>left.delete(id));
     grid+=`<p class="bgrp">${g}</p><div class="bankgrid">${m.map(cell).join('')}</div>`;}}
@@ -1710,10 +1750,12 @@ document.addEventListener('pointermove',e=>{if(tipEl.hidden)return;if(!e.target.
 document.addEventListener('pointerdown',()=>{tipEl.hidden=true;},{capture:true});
 function bankOpts(id){
   const t=ITEMS[id].name,tc='c-item';
-  return[{a:'Withdraw-1',t,tc,fn:()=>withdraw(id,1)},{a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},{a:'Examine',t,tc,fn:()=>msg(itemEx(id))}];
+  return[{a:'Withdraw-1',t,tc,fn:()=>withdraw(id,1)},...(id==='coins'?[{a:'Withdraw-100',t,tc,fn:()=>withdraw(id,100)},{a:'Withdraw-1,000',t,tc,fn:()=>withdraw(id,1000)}]:[]),
+    {a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},{a:'Examine',t,tc,fn:()=>msg(itemEx(id))}];
 }
 function withdraw(id,n){
   if(!nearChest()){msg('You need to be at the bank chest to withdraw items.');return;}
+  if(id==='coins'){n=Math.min(n,state.gold);if(n>0&&addItem('coins',n)){state.gold-=n;updateHud();}else if(n>0)msg("You don't have enough inventory space.");renderInv();renderBank();return;}
   let k=0;while(k<n&&state.bank[id]>0){const ok=ITEMS[id].stack?addItem(id,state.bank[id]):addItem(id,1);if(!ok)break;
     const take=ITEMS[id].stack?state.bank[id]:1;state.bank[id]-=take;k+=take;}
   if(state.bank[id]<=0)delete state.bank[id];
@@ -1723,7 +1765,7 @@ const logsOwned=w=>countOwned(TREES[w].item);
 
 /* ================= TAB RENDERERS ================= */
 function updateHud(){
-  const sk=activity();$('#hud-sk').textContent=SKILLS[sk].abbr;$('#xplvl').textContent=level(sk);$('#chlvl').textContent=charLevel();$('#gptot').textContent=state.gold.toLocaleString()+' gp';
+  const sk=activity();$('#hud-sk').textContent=SKILLS[sk].abbr;$('#xplvl').textContent=level(sk);$('#chlvl').textContent=charLevel();$('#gptot').textContent=gpTotal().toLocaleString()+' gp';
 }
 let skillView='woodcutting';
 function resourceRows(sk){
@@ -1842,7 +1884,7 @@ function renderFocus(){
   <p class="hint" style="margin-top:2px">${isProc(sk)?`${SKILLS[sk].name} also ${sk==='smithing'?'mines its own ore':sk==='construction'?'chops its own logs':'catches its own fish'} when you run out. Pays 25% more gold.`:`Gathers, banks and repeats.`}</p>
   <div class="big" id="fm-val">${m}<span style="font-size:16px"> min</span></div>
   <input type="range" id="fm-range" min="5" max="120" step="5" value="${m}" aria-label="Focus minutes">
-  <div class="chips">${[15,25,45,60,90].map(v=>`<button class="chip ${v===m?'on':''}" data-m="${v}">${v}</button>`).join('')}</div>
+  <div class="chips">${[15,30,45,60,90].map(v=>`<button class="chip ${v===m?'on':''}" data-m="${v}">${v}</button>`).join('')}</div>
   <div class="reward" id="fm-rew"></div>
   <button class="btn go" id="fm-start">Start focusing</button>
   <p class="hint">While the timer runs the game plays itself and the chosen skill earns +50% XP. Longer sessions pay more per minute. Giving up throws away everything since the timer started.</p>
@@ -1873,16 +1915,16 @@ function renderIsles(){
 const swatch=cols=>`<span class="sw">${cols.map(c=>`<i style="background:${c}"></i>`).join('')}</span>`;
 function renderShop(){
   const lv=state.cabin.level,nx=CABIN_LEVELS[lv+1];
-  $('#tab-shop').innerHTML=`<p class="ttl">General store</p><div class="row"><span>Your gold</span><span class="v" style="color:var(--gold)">${state.gold.toLocaleString()} gp</span></div>
+  $('#tab-shop').innerHTML=`<p class="ttl">General store</p><div class="row"><span>Your gold</span><span class="v" style="color:var(--gold)">${gpTotal().toLocaleString()} gp</span></div>
   <p class="sect">Outfits</p><div class="list">${Object.entries(OUTFITS).map(([id,o])=>{const own=state.outfits.includes(id),wear=state.outfit===id;
-    const b=wear?'<span class="sub">Wearing</span>':own?`<button class="btn sm" data-wear="${id}">Wear</button>`:`<button class="btn sm go" data-buyo="${id}" ${state.gold>=o.price?'':'disabled'}>${o.price} gp</button>`;
+    const b=wear?'<span class="sub">Wearing</span>':own?`<button class="btn sm" data-wear="${id}">Wear</button>`:`<button class="btn sm go" data-buyo="${id}" ${gpTotal()>=o.price?'':'disabled'}>${o.price} gp</button>`;
     return `<div class="card">${swatch([o.shirt,o.stripe,o.pants,o.hat?o.hat[1]:o.boot])}<div class="meta"><div class="nm">${o.name}</div></div>${b}</div>`;}).join('')}</div>
-  <p class="sect">Cabin</p><div class="card"><div class="meta"><div class="nm">${CABIN_LEVELS[lv].name} (${room().cap} furniture)</div><div class="sub">${nx?`Upgrade to ${nx.name}: bigger room, ${nx.cap} furniture`:'Fully upgraded'}</div></div>${nx?`<button class="btn sm go" id="buy-cabin" ${state.gold>=nx.price?'':'disabled'}>${nx.price} gp</button>`:''}</div>
+  <p class="sect">Cabin</p><div class="card"><div class="meta"><div class="nm">${CABIN_LEVELS[lv].name} (${room().cap} furniture)</div><div class="sub">${nx?`Upgrade to ${nx.name}: bigger room, ${nx.cap} furniture`:'Fully upgraded'}</div></div>${nx?`<button class="btn sm go" id="buy-cabin" ${gpTotal()>=nx.price?'':'disabled'}>${nx.price} gp</button>`:''}</div>
   <p class="sect">Wood styles for walls and floors</p><div class="list">${TREE_ORDER.map(w=>{const own=state.cabin.woods.includes(w),c=state.cabin;
     const use=own?`<button class="btn sm ${c.wall===w?'go':''}" data-wall="${w}" ${c.wall===w?'disabled':''}>${c.wall===w?'On walls':'Walls'}</button><button class="btn sm ${c.floor===w?'go':''}" data-floor="${w}" ${c.floor===w?'disabled':''}>${c.floor===w?'On floor':'Floor'}</button>`:'';
-    return `<div class="card">${swatch([woodBark(w),woodRing(w)])}<div class="meta"><div class="nm">${WOOD_NAME[w]} wood</div></div>${own?use:`<button class="btn sm go" data-buyw="${w}" ${state.gold>=WOOD_STYLE_PRICE[w]?'':'disabled'}>${WOOD_STYLE_PRICE[w]} gp</button>`}</div>`;}).join('')}</div>
+    return `<div class="card">${swatch([woodBark(w),woodRing(w)])}<div class="meta"><div class="nm">${WOOD_NAME[w]} wood</div></div>${own?use:`<button class="btn sm go" data-buyw="${w}" ${gpTotal()>=WOOD_STYLE_PRICE[w]?'':'disabled'}>${WOOD_STYLE_PRICE[w]} gp</button>`}</div>`;}).join('')}</div>
   <p class="sect">Books for the fireside</p><div class="list">${BOOK_ORDER.map(id=>{const b=BOOKS[id],has=state.books.includes(id),cur=state.book===id;
-    const btn=cur?'<span class="sub">Reading</span>':has?`<button class="btn sm" data-readb="${id}">Read</button>`:`<button class="btn sm go" data-buyb="${id}" ${state.gold>=b.price?'':'disabled'}>${b.price} gp</button>`;
+    const btn=cur?'<span class="sub">Reading</span>':has?`<button class="btn sm" data-readb="${id}">Read</button>`:`<button class="btn sm go" data-buyb="${id}" ${gpTotal()>=b.price?'':'disabled'}>${b.price} gp</button>`;
     return `<div class="card">${swatch([b.color,shade(b.color,-.18)])}<div class="meta"><div class="nm">${esc(b.title)}</div><div class="sub">by ${esc(b.author)}</div></div>${btn}</div>`;}).join('')}</div>
   <p class="hint">Earn gold from focus timers and by selling to Hazel the trader. She pays far more for jewellery and cooked fish. Press READ to sit by the fire with your book.</p>`;
   const el=$('#tab-shop');
@@ -1900,7 +1942,8 @@ function setCabinWood(part,w){
 const woodPickers=()=>{const c=state.cabin;return c.woods.length<2?'':`<label class="opt" for="cb-wall"><span>Walls</span><select id="cb-wall">${c.woods.map(w=>`<option value="${w}" ${c.wall===w?'selected':''}>${WOOD_NAME[w]}</option>`).join('')}</select></label>
   <label class="opt" for="cb-floor"><span>Floor</span><select id="cb-floor">${c.woods.map(w=>`<option value="${w}" ${c.floor===w?'selected':''}>${WOOD_NAME[w]}</option>`).join('')}</select></label>`;};
 const bindWoodPickers=()=>{const a=$('#cb-wall'),b=$('#cb-floor');if(a)a.onchange=e=>setCabinWood('wall',e.target.value);if(b)b.onchange=e=>setCabinWood('floor',e.target.value);};
-function spend(n){if(state.gold<n){msg("You don't have enough gold.");return false;}state.gold-=n;sfx.coins();updateHud();return true;}
+function spend(n){if(gpTotal()<n){msg("You don't have enough gold.");return false;}
+  const b=Math.min(n,state.gold);state.gold-=b;if(n>b)consume('coins',n-b,false);sfx.coins();updateHud();return true;}
 let buildWood='tree';
 function renderCabin(){
   const el=$('#tab-cabin');
@@ -2071,7 +2114,7 @@ function openTrade(again){
   const ids=all.filter(id=>tradeFilter==='all'||tradeKind(id)===tradeFilter);
   const goods=all.filter(id=>ITEMS[id].kind==='good'),goodsTotal=goods.reduce((a,id)=>a+countOwned(id)*itemPrice(id),0);
   const body=`<p style="margin:0 0 8px">"${esc(tradeLine)}"</p>
-    <div class="row"><span>Your gold</span><span class="v" style="color:var(--gold)">${state.gold.toLocaleString()} gp</span></div>
+    <div class="row"><span>Your gold</span><span class="v" style="color:var(--gold)">${gpTotal().toLocaleString()} gp</span></div>
     ${all.length?`<div class="chips">${TRADE_FILTERS.map(([k,n])=>{const c=k==='all'?all.length:all.filter(id=>tradeKind(id)===k).length;
       return `<button class="chip ${k===tradeFilter?'on':''}" data-tf="${k}" ${c?'':'disabled'}>${n} (${c})</button>`;}).join('')}</div>`:''}
     ${ids.length?`<div class="list trade">${ids.map(id=>{const d=ITEMS[id],n=countOwned(id),pr=itemPrice(id);
@@ -2189,19 +2232,20 @@ function buildIsland(id){
   obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,{x:SEAT.x,z:SEAT.z,r:.45});
   buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();
   if(id==='greenhaven')buildCabinExterior();
-  spawnNpcs();buildDecor();buildMapImg();
+  buildDecor();buildMapImg();
   for(const t of I.tiers)for(let i=0;i<(t===I.tiers[0]?5:3);i++){const p=findSpot(8,34,2.2);if(p)new RockEnt(t,p.x,p.z);}
   layoutFishAreas();I.tiers.forEach((t,i)=>{for(let k=0;k<2;k++)new FishSpot(t,fishAreas[i]);});
-  // The deeper water off the end of the dock holds the isle's better fish, and can only be reached from the dock.
-  const dk=new FishSpot(I.tiers[I.tiers.length-1],[DOCK_SPOT]);dk.stand=DOCK_STAND;dk.dock=true;
+  // The deep water off each end of the dock's platform holds one of the isle's fish, and can only be reached from the dock.
+  DOCK_SPOTS.forEach((d,i)=>{const dk=new FishSpot(I.tiers[i?I.tiers.length-1:0],[{x:d.x,z:d.z}]);dk.stand=d.stand;dk.dock=true;});
   for(const [k,n] of Object.entries(I.trees))for(let i=0;i<n;i++){const p=findSpot(TREES[k].rmin,TREES[k].rmax,2.6);if(p)new TreeEnt(k,p.x,p.z);}
+  spawnNpcs();
 }
 
 /* ================= ACTIONS ================= */
 function stopAction(){player.action=null;player.idle=0;}
 function walkTo(x,z){
   if(inCabin()){const R=room();x=clamp(x,INT.x-R.w/2+.45,INT.x+R.w/2-.45);z=clamp(z,INT.z-R.d/2+.45,INT.z+R.d/2-.45);}
-  else if(onDock(x,z)){x=clamp(x,-.7,.7);z=Math.min(z,40.7);}
+  else if(Math.hypot(x,z)>ISLAND-2.4&&dockDist(x,z)<1){const p=dockSnap(x,z);x=p.x;z=p.z;}
   else{const r=Math.hypot(x,z),m=ISLAND-2.4;if(r>m){x*=m/r;z*=m/r;}}
   player.action={type:'walk',x,z};player.stuck=0;
 }
@@ -2268,8 +2312,8 @@ function entOpts(ent,point){
     o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. Build it with logs from this isle's own trees (${Object.keys(I.trees).map(k=>ITEMS[TREES[k].item].name.toLowerCase()).join(', ')}).`));}
   else if(ent&&ent.kind==='trader')o.push({a:'Trade',t:'Hazel',tc:'c-npc',fn:()=>{player.action={type:'trade',ent:TRADER};player.stuck=0;}},
     {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},walk,ex('Hazel',TRADER.ex));
-  else if(ent&&ent.kind==='npc')o.push({a:'Talk-to',t:ent.name,tc:'c-npc',fn:()=>{const t=()=>talkNpc(ent);if(focusing())t();else useAt(ent.x,ent.z,ent.reach,t);}},walk,
-    ex(ent.name,`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up. ${boostText(ent.isle,ent.j)}, on every isle.`));
+  else if(ent&&ent.kind==='npc')o.push({a:'Talk-to',t:ent.name,tc:'c-npc',fn:()=>{ent.hold=12;const t=()=>talkNpc(ent);if(focusing())t();else useAt(ent.x,ent.z,ent.reach,t);}},walk,
+    ex(ent.name,`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up, and spends the day ${{woodcutting:'among the trees',mining:'by the rocks',fishing:'down by the fishing spots',smithing:'by the furnace',cooking:'by the campfire'}[npcSkill(ent.isle,ent.j)]}. ${boostText(ent.isle,ent.j)}, on every isle.`));
   else if(ent&&ent.kind==='ground'){const d=ITEMS[ent.id];o.push({a:'Take',t:d.name+(ent.q>1?` (${ent.q.toLocaleString()})`:''),tc:'c-item',fn:()=>takeFloor(ent)},walk,{a:'Examine',t:d.name,tc:'c-item',fn:()=>msg(itemEx(ent.id))});}
   else if(ent&&ent.kind==='dock')o.push(walk,ex('Dock',DOCK.ex));
   else if(ent&&ent.kind==='boat')o.push({a:'Travel',t:'Rowing boat',fn:()=>{player.action={type:'boat',ent:BOAT};player.stuck=0;}},walk,ex('Rowing boat',BOAT.ex));
@@ -2552,13 +2596,17 @@ function clampToArea(){
   if(inCabin()){const R=room();player.x=clamp(player.x,INT.x-R.w/2+.45,INT.x+R.w/2-.45);player.z=clamp(player.z,INT.z-R.d/2+.45,INT.z+R.d/2-.45);return;}
   const r=Math.hypot(player.x,player.z),lim=ISLAND-2.2;if(r<=lim)return;
   // Past the shore, the only ground is the dock.
-  if(player.z>0&&Math.abs(player.x)<1.3&&player.z<41.5){player.x=clamp(player.x,-.7,.7);player.z=Math.min(player.z,40.7);return;}
+  if(dockDist(player.x,player.z)<.8){const p=dockSnap(player.x,player.z);player.x=p.x;player.z=p.z;return;}
   player.x*=lim/r;player.z*=lim/r;
 }
 function stepToward(gx,gz,dt){
-  // Heading out onto the dock: go to its foot first, so the rat doesn't wade along the shore.
-  let via=false;const lim=ISLAND-2.2;
-  if(onDock(gx,gz)&&Math.hypot(gx,gz)>lim-.4&&Math.hypot(player.x,player.z)<lim-.2&&Math.abs(player.x)>.55){gx=0;gz=37.2;via=true;}
+  // On and off the dock, go by its foot and the top of the walkway, so the rat never wades along the shore.
+  let via=false;const pp=dockPart(player.x,player.z),gp=dockPart(gx,gz);
+  if(!inCabin()){
+    if(gp!=='land'&&pp==='land'&&Math.abs(player.x)>.55){gx=0;gz=37.2;via=true;}
+    else if(gp==='plat'&&pp!=='plat'&&player.z<41){gx=0;gz=41.8;via=true;}
+    else if(pp==='plat'&&gp!=='plat'&&Math.abs(player.x)>.6){gx=0;gz=41.8;via=true;}
+    else if(pp!=='land'&&gp==='land'){gx=0;gz=37;via=true;}}
   const dx=gx-player.x,dz=gz-player.z,d=Math.hypot(dx,dz);if(d<.05)return !via;
   const s=Math.min(d,SPEED*dt);const mx=dx/d,mz=dz/d;const ox=player.x,oz=player.z;
   player.x+=mx*s;player.z+=mz*s;player.faceT=Math.atan2(dx,dz);player.anim='walk';
@@ -2686,7 +2734,7 @@ const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 function pick(cx,cy){
   ndc.set(cx/innerWidth*2-1,-(cy/VH)*2+1);ray.setFromCamera(ndc,camera);
   const c=inCabin(),base=c?floorPick:ground;
-  const hits=ray.intersectObjects(c?[floorPick,intPick]:[ground,pickRoot,groundRoot],true);
+  const hits=ray.intersectObjects(c?[floorPick,intPick,groundRoot]:[ground,pickRoot,groundRoot],true);
   const shown=o=>{for(;o;o=o.parent)if(!o.visible&&o!==floorPick)return false;return true;};
   for(const h of hits){if(!shown(h.object))continue;const e=h.object.userData.ent;if(e)return{ent:e,point:h.point};
     if(h.object===base){
@@ -2761,16 +2809,16 @@ function drawMinimap(){
     for(const t of trees){g.fillStyle=t.state==='alive'?t.def.map:t.state==='sapling'?'#9fe070':'#6a4a2a';g.beginPath();g.arc(t.x,t.z,t.state==='alive'?.9:.5,0,Math.PI*2);g.fill();}
     for(const r of rocks){g.fillStyle=r.state==='full'?r.def.color:'#6e6b66';g.fillRect(r.x-.6,r.z-.6,1.2,1.2);}
     for(const s of spots){g.fillStyle='#e8f6ff';g.beginPath();g.arc(s.x,s.z,.8,0,Math.PI*2);g.fill();}
-    g.fillStyle='#ff3030';for(const f of floorItems)g.fillRect(f.x-.35,f.z-.35,.7,.7);
     g.fillStyle='#ffe040';for(const e of npcs){g.beginPath();g.arc(e.x,e.z,.55,0,Math.PI*2);g.fill();}
     g.fillStyle='#ffd400';g.strokeStyle='#000';g.lineWidth=.3;g.beginPath();g.arc(CHEST.x,CHEST.z,1.1,0,Math.PI*2);g.fill();g.stroke();
     g.fillStyle='#ff6a00';g.beginPath();g.arc(FIRE.x,FIRE.z,.6,0,Math.PI*2);g.fill();
     g.fillStyle='#8a847c';g.fillRect(FURNACE.x-.7,FURNACE.z-.7,1.4,1.4);
     g.fillStyle='#c0392b';g.fillRect(TRADER.x-.9,TRADER.z-.6,1.8,1.2);
-    g.fillStyle='#8a5a2e';g.fillRect(-.8,35.4,1.6,5.4);g.fillStyle='#c08040';g.fillRect(-.6,41.2,1.2,2.4);
+    g.fillStyle='#8a5a2e';g.fillRect(-.8,35.4,1.6,5.8);g.fillRect(-6,40.9,12,2.7);g.fillStyle='#c08040';g.fillRect(-.6,44.2,1.2,2.4);
     if(state.island==='greenhaven'){g.fillStyle=woodBark(state.cabin.wall);g.fillRect(CABIN.x-CABIN.r*.85,CABIN.z-CABIN.r*.7,CABIN.r*1.7,CABIN.r*1.4);}
     if(pet){g.fillStyle='#ffff00';g.fillRect(pet.x-.4,pet.z-.4,.8,.8);}
   }
+  g.fillStyle='#ff3030';for(const f of floorItems)g.fillRect(f.x-.35,f.z-.35,.7,.7);
   const a=player.action;if(a&&a.type==='walk'){g.fillStyle='#ff2020';g.fillRect(a.x-.5,a.z-.5,1,1);}
   g.restore();g.fillStyle='#fff';g.fillRect(c-2,c-2,4,4);g.restore();
   const nx=Math.sin(cam.yaw),ny=-Math.cos(cam.yaw);const cx=20,cy=20;
