@@ -1,2 +1,9 @@
 .DS_Store
 saves/
+
+# App Store Connect API keys and signing files
+*.p8
+*.p12
+*.mobileprovision
+.env*
+!.env.example

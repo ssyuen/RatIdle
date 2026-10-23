@@ -1,0 +1,28 @@
+# Submits the newest TestFlight build (the one testers have tried) for App Store review; it releases once Apple approves it.
+# Bump "version" in app.json before the TestFlight build of each new release. Run with:
+#   npx eas-cli@latest workflow:run .eas/workflows/app-store.yml -F whats_new="Bug fixes"
+# Needs the ASC_KEY_ID, ASC_ISSUER_ID and ASC_PRIVATE_KEY environment variables in the production environment on EAS.
+name: App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        type: string
+        required: false
+        description: 'TestFlight build number to submit (default: the newest processed build)'
+      whats_new:
+        type: string
+        required: false
+        description: 'Release notes for this version (required by Apple for every version after the first)'
+
+jobs:
+  submit_for_review:
+    name: Submit for App Store review
+    environment: production
+    env:
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      WHATS_NEW: ${{ inputs.whats_new }}
+    steps:
+      - uses: eas/checkout
+      - run: node scripts/submit-for-review.mjs
