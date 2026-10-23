@@ -243,6 +243,11 @@ body.touch .trade .tb .btn{padding:7px 10px}
 #tut-card .btns{display:flex;gap:8px;margin-top:10px}
 #tut-card .btns .btn{margin:0}
 #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:25;transition:opacity .45s}
+/* Focus button: bottom centre whenever no timer runs, above the game log where the two would meet. */
+#focusbtn{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:6;background:linear-gradient(#e8634a,#a8301f);color:var(--white);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px #ff9a80,0 4px 14px rgba(0,0,0,.45);font:600 22px var(--font);padding:7px 34px 9px;cursor:pointer;text-shadow:2px 2px 0 #000;letter-spacing:.04em}
+#focusbtn:hover{filter:brightness(1.1)}
+#focusbtn:active{transform:translateX(-50%) translateY(2px)}
+@media (max-width:1180px){#focusbtn{bottom:calc(164px + env(safe-area-inset-bottom,0px))}}
 #placebar{position:fixed;left:50%;bottom:calc(166px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,14,8,.85);border:2px solid var(--gold);padding:6px 10px;z-index:8;display:flex;gap:8px;align-items:center;font-size:13px;text-shadow:1px 1px 0 #000;max-width:calc(100vw - 32px)}
 /* click cross */
 .xmark{position:fixed;width:14px;height:14px;margin:-7px 0 0 -7px;pointer-events:none;z-index:15;animation:xm .45s steps(4) forwards}
@@ -281,9 +286,11 @@ body.touch #focuspill{padding:6px 14px 7px}
   #bagtoggle{display:block}
   #focuspill{min-width:0}
   #placebar{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
-  #banner{top:auto;bottom:calc(130px + env(safe-area-inset-bottom,0px))}
+  #banner{top:auto;bottom:calc(178px + env(safe-area-inset-bottom,0px))}
+  #focusbtn{bottom:calc(108px + env(safe-area-inset-bottom,0px));font-size:19px;padding:6px 28px 8px}
+  body.touch #focusbtn{bottom:calc(124px + env(safe-area-inset-bottom,0px))}
 }
-@media (max-height:560px){ #side{transform:scale(.72);--side-scale:.72} #chat{height:100px} }
+@media (max-height:560px){ #side{transform:scale(.72);--side-scale:.72} #chat{height:100px} #focusbtn{bottom:calc(112px + env(safe-area-inset-bottom,0px))} }
 /* Short landscape phones: keep the game log clear of the side panel (244px wide at 72%). */
 @media (max-height:560px) and (orientation:landscape){ #chat{width:min(520px,calc(100vw - 190px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)))} }
 @media (prefers-reduced-motion:reduce){ #tut-hl{animation:none} .xpd{animation-duration:.01s} .xmark{animation:none} #fade{transition:none} }
@@ -331,6 +338,7 @@ body.touch #focuspill{padding:6px 14px 7px}
   <div id="chatlog"></div>
   <div id="chatbar"><button class="on" id="logtoggle" title="Hide the game log">Game ▾</button><button id="menutoggle">Hide menus</button><button id="bagtoggle">Hide pack</button></div>
 </div>
+<button id="focusbtn" hidden title="Start a focus timer">Focus</button>
 <div id="placebar" hidden><span id="pb-text">Tap the floor to place</span><button class="btn sm" id="pb-rot">Rotate</button><button class="btn sm warn" id="pb-cancel">Cancel</button></div>
 <div id="menu" hidden></div>
 <div id="banner" hidden><div class="b1"></div><div class="b2"></div></div>
@@ -629,7 +637,7 @@ function sanitize(raw,opts={}){
     // Saves from before the tutorial existed belong to players who already know the game.
     g.tutorialDone=t.tutorialDone!==false;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
-  f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':'island';
+  f.loc=s.loc==='cabin'&&f.island==='greenhaven'?'cabin':s.loc==='mine'?'mine':'island';
   if(isObj(s.pos))f.pos={x:num(s.pos.x,-500,500,0),z:num(s.pos.z,-500,500,3)};
   f.outfits=[...new Set(['medieval',...pickList(s.outfits,OUTFITS)])];
   f.outfit=typeof s.outfit==='string'&&f.outfits.includes(s.outfit)?s.outfit:'medieval';
@@ -793,6 +801,8 @@ const worldRoot=new THREE.Group();scene.add(worldRoot);
 const pickRoot=new THREE.Group();scene.add(pickRoot);
 const interiorRoot=new THREE.Group();scene.add(interiorRoot);interiorRoot.visible=false;
 const intPick=new THREE.Group();interiorRoot.add(intPick);
+const caveRoot=new THREE.Group();scene.add(caveRoot);caveRoot.visible=false;
+const cavePick=new THREE.Group();caveRoot.add(cavePick);
 const tagEnt=(g,e)=>g.traverse(o=>{if(o.isMesh)o.userData.ent=e;});
 
 /* ================= TERRAIN ================= */
@@ -861,6 +871,15 @@ const dockDist=(x,z)=>{const p=dockSnap(x,z);return Math.hypot(p.x-x,p.z-z);};
 // Where a point is: on land, on the walkway, or out on the platform.
 const dockPart=(x,z)=>Math.hypot(x,z)<=ISLAND-2.3?'land':z>=41.05&&Math.abs(x)>.75?'plat':'stem';
 const CABIN={kind:'cabin',name:'Log cabin',x:-8,z:-7,r:2.4,reach:.6,ex:'Your log cabin. Home sweet home. Go in to place the furniture you build from logs.'};
+// Every isle's ore is down its mine, in a cave as big as the isle itself. The cave uses the isle's own coordinates, so
+// the ladder up sits right under the entrance.
+const MINE={kind:'mine',name:'Mine entrance',x:-11,z:4,r:2.3,reach:.6,ex:"A timber-framed way down into the rock. All of this isle's ore is in the cave below."};
+const CAVE_EXIT={kind:'exit',name:'Ladder',x:MINE.x,z:MINE.z,r:.9,reach:1.3,ex:'A ladder up to daylight, and the mine entrance.'};
+const CAVE_SEAT={kind:'cseat',name:"Miner's crate",x:MINE.x+2.6,z:MINE.z+2.2,r:.4,ex:'An old crate by the lantern. Sit on it to read your book.'};
+const CAVE_R=ISLAND-3.6;
+// The way into the mine, and out of it, faces the middle of the isle.
+const mineDir=()=>{const r=Math.hypot(MINE.x,MINE.z);return{x:-MINE.x/r,z:-MINE.z/r};};
+const mineDoor=()=>{const d=mineDir();return{x:MINE.x+d.x*(MINE.r+.35),z:MINE.z+d.z*(MINE.r+.35)};};
 let fireFlames=[],fireLight=null,boatMesh=null,chimney=null,furnaceGlow=null,hazel=null;
 function buildChest(){
   const g=new THREE.Group();
@@ -971,7 +990,7 @@ function npcTarget(e){
   const near=(o,r)=>{const a=Math.atan2(-o.z,-o.x)+rand(-1.1,1.1);return{x:o.x+Math.cos(a)*r,z:o.z+Math.sin(a)*r,lx:o.x,lz:o.z};};
   for(let k=0;k<10;k++){let t=null;
     if(sk==='woodcutting'){const o=pickOne(trees.filter(t=>t.state==='alive'));if(o)t=near(o,o.cr+1.3);}
-    else if(sk==='mining'){const o=pickOne(rocks);if(o)t=near(o,1.7);}
+    else if(sk==='mining')t=near(MINE,MINE.r+rand(1,2.2));
     else if(sk==='fishing'){const o=pickOne(fishAreas.flat());if(o){const f=(ISLAND-4)/Math.hypot(o.x,o.z);t={x:o.x*f+rand(-1,1),z:o.z*f+rand(-1,1),lx:o.x,lz:o.z};}}
     else t=near(sk==='smithing'?FURNACE:FIRE,sk==='smithing'?2.4:2.1);
     if(!t)t={x:SITE.x+rand(-3,3),z:SITE.z+rand(2.5,4),lx:SITE.x,lz:SITE.z};
@@ -1032,15 +1051,15 @@ const FLOOR_LIFE=180,FLOOR_MAX=60,floorMats={},floorItems=[];
 function floorMat(id){if(!floorMats[id]){const tx=new THREE.TextureLoader().load(iconURL(id));tx.magFilter=tx.minFilter=THREE.NearestFilter;
   floorMats[id]=new THREE.SpriteMaterial({map:tx,transparent:true,depthWrite:false});}return floorMats[id];}
 function dropFloor(id,q,x,z){
-  const f0=floorItems.find(o=>o.id===id&&Math.hypot(o.x-x,o.z-z)<1.2);if(f0){f0.q+=q;f0.t=FLOOR_LIFE;return f0;}
+  const f0=floorItems.find(o=>o.id===id&&o.loc===state.loc&&Math.hypot(o.x-x,o.z-z)<1.2);if(f0){f0.q+=q;f0.t=FLOOR_LIFE;return f0;}
   if(floorItems.length>=FLOOR_MAX)removeFloor(floorItems[0]);
   const sp=new THREE.Sprite(floorMat(id)),y=groundY(x,z);sp.position.set(x,y+.32,z);sp.scale.set(.62,.55,1);
-  const f={kind:'ground',id,q,x,z,y,t:FLOOR_LIFE,sp,ph:rand(0,6)};sp.userData.ent=f;groundRoot.add(sp);floorItems.push(f);return f;
+  const f={kind:'ground',id,q,x,z,y,loc:state.loc,t:FLOOR_LIFE,sp,ph:rand(0,6)};sp.userData.ent=f;groundRoot.add(sp);floorItems.push(f);return f;
 }
 function removeFloor(f){groundRoot.remove(f.sp);const i=floorItems.indexOf(f);if(i>=0)floorItems.splice(i,1);}
 function clearFloor(){while(floorItems.length)removeFloor(floorItems[0]);}
 function updateFloor(dt,T){for(let i=floorItems.length-1;i>=0;i--){const f=floorItems[i];f.t-=dt;if(f.t<=0){removeFloor(f);continue;}
-  f.sp.position.y=f.y+.32+Math.sin(T*2+f.ph)*.04;f.sp.visible=f.t>20||Math.floor(f.t*4)%2===0;}}
+  f.sp.position.y=f.y+.32+Math.sin(T*2+f.ph)*.04;f.sp.visible=f.loc===state.loc&&(f.t>20||Math.floor(f.t*4)%2===0);}}
 function takeFloor(f){useAt(f.x,f.z,.8,()=>{
   if(!floorItems.includes(f)){msg('It has gone.');return;}
   const d=ITEMS[f.id];let n=0;if(d.stack){if(addItem(f.id,f.q))n=f.q;}else while(n<f.q&&addItem(f.id,1))n++;
@@ -1087,6 +1106,19 @@ function buildCabinExterior(){
   chimney=mesh(new THREE.BoxGeometry(.6,1.6,.6),'#8a8a84',w/2-.7,h+.9,-d/4);g.add(chimney);
   g.position.set(CABIN.x,y0,CABIN.z);tagEnt(g,CABIN);pickRoot.add(g);
   obstacles.push(CABIN);
+}
+function buildMine(){
+  const P=I.pal,g=new THREE.Group(),wood='#6a4a2a',dk='#4e3420';
+  const hill=mesh(new THREE.DodecahedronGeometry(1.9,0),P.rock,0,.35,-.9);hill.scale.set(1.2,.95,1);g.add(hill);
+  g.add(mesh(new THREE.DodecahedronGeometry(1.0,0),shade(P.rock,-.06),1.7,.15,-.2),mesh(new THREE.DodecahedronGeometry(.85,0),shade(P.rock,.04),-1.75,.1,-.3));
+  g.add(basic(new THREE.BoxGeometry(1.2,1.6,.1),0x0a0806,0,.8,.98));
+  for(const sx of[-1,1])g.add(mesh(new THREE.BoxGeometry(.2,1.95,.2),wood,sx*.72,.95,1.08));
+  g.add(mesh(new THREE.BoxGeometry(1.85,.22,.28),dk,0,1.98,1.08));
+  // a short run of rails out of the dark
+  for(const sx of[-1,1])g.add(mesh(new THREE.BoxGeometry(.06,.06,2),'#8a8a90',sx*.32,.06,1.9));
+  for(let i=0;i<4;i++)g.add(mesh(new THREE.BoxGeometry(.9,.06,.16),dk,0,.03,1.2+i*.5));
+  g.add(mesh(new THREE.BoxGeometry(.05,.3,.05),'#2a2a2a',.95,1.72,1.25),basic(new THREE.BoxGeometry(.2,.24,.2),0xffd080,.95,1.5,1.25));
+  g.position.set(MINE.x,height(MINE.x,MINE.z)-.1,MINE.z);g.rotation.y=Math.atan2(-MINE.x,-MINE.z);tagEnt(g,MINE);pickRoot.add(g);
 }
 function buildDecor(){
   const P=I.pal;
@@ -1191,8 +1223,8 @@ class TreeEnt{
   }
 }
 class RockEnt{
-  constructor(t,x,z){this.kind='rock';this.skill='mining';this.def=ROCKS[t];this.x=x;this.z=z;this.y=height(x,z);this.cr=.7;this.r=.7;
-    this.state='full';this.timer=0;this.shake=0;this.group=new THREE.Group();this.group.position.set(x,this.y,z);this.group.rotation.y=rand(0,6.28);pickRoot.add(this.group);this.build();rocks.push(this);}
+  constructor(t,x,z){this.kind='rock';this.skill='mining';this.def=ROCKS[t];this.x=x;this.z=z;this.y=0;this.cr=.7;this.r=.7;
+    this.state='full';this.timer=0;this.shake=0;this.group=new THREE.Group();this.group.position.set(x,this.y,z);this.group.rotation.y=rand(0,6.28);cavePick.add(this.group);this.build();rocks.push(this);}
   get name(){return this.state==='full'?this.def.name:'Rocks';}
   get reach(){return this.cr+.6;}
   available(){return this.state==='full';}
@@ -1253,7 +1285,6 @@ class FishSpot{
 const gatherEnts=()=>trees.concat(rocks,spots);
 function clearAt(x,z,minD,ignore){
   for(const t of trees)if(t!==ignore&&Math.hypot(t.x-x,t.z-z)<minD+t.cr)return false;
-  for(const t of rocks)if(t!==ignore&&Math.hypot(t.x-x,t.z-z)<minD+t.cr)return false;
   for(const o of obstacles)if(Math.hypot(o.x-x,o.z-z)<o.r+1.4)return false;
   if(Math.abs(x)<1.6&&z>30)return false;
   return true;
@@ -1534,8 +1565,8 @@ function buildInterior(){
   });
 }
 function updateCutaway(){for(const w of walls){const dx=camera.position.x-w.cx,dz=camera.position.z-w.cz;w.g.visible=dx*w.nx+dz*w.nz<0;if(w.door)w.door.visible=w.g.visible;}}
-const inCabin=()=>state.loc==='cabin';
-function groundY(x,z){return inCabin()?0:onDock(x,z)?Math.max(height(x,z),DOCK_Y):height(x,z);}
+const inCabin=()=>state.loc==='cabin',inMine=()=>state.loc==='mine',onIsle=()=>state.loc==='island';
+function groundY(x,z){return inCabin()||inMine()?0:onDock(x,z)?Math.max(height(x,z),DOCK_Y):height(x,z);}
 function enterCabin(){
   if(focusing()){msg('You are busy while you focus. Visit the cabin after your timer ends.');return;}
   if(state.island!=='greenhaven'){msg('Your cabin is on Greenhaven. Sail home first.');return;}
@@ -1549,10 +1580,87 @@ function leaveCabin(quiet){
   if(!quiet)msg('You head back outside.');renderTab();save();
 }
 function showLocation(){
-  const c=inCabin();interiorRoot.visible=c;worldRoot.visible=!c;pickRoot.visible=!c;water.visible=!c;for(const sh of ships)sh.g.visible=!c;
-  for(const cl of clouds)cl.visible=!c;
+  const c=inCabin(),m=inMine(),o=!c&&!m;interiorRoot.visible=c;caveRoot.visible=m;worldRoot.visible=o;pickRoot.visible=o;water.visible=o;for(const sh of ships)sh.g.visible=o;
+  for(const cl of clouds)cl.visible=o;
   if(c)buildInterior();else{disposeGroup(interiorRoot);interiorRoot.add(intPick);walls=[];}
+  // The cave is dark, lit by lanterns and the daylight down the ladder.
+  if(m){scene.background.set(CAVE_DARK);scene.fog.color.set(CAVE_DARK);hemi.color.set(0x9aa4b8);hemi.groundColor.set(0x2a2018);hemi.intensity=.75;sun.intensity=.42;}
+  else{scene.background.set(I.sky);scene.fog.color.set(I.sky);hemi.color.set(0xe4f2ff);hemi.groundColor.set(I.pal.g3);hemi.intensity=.72;sun.intensity=.82;}
   if(pet){pet.x=player.x;pet.z=player.z;}
+}
+
+/* ================= MINE ================= */
+const CAVE_DARK=0x0b0907;
+let caveFloor=null,caveObstacles=[],caveWalls=[],caveLights=[];
+function caveSpot(rmin,rmax,minD){
+  for(let i=0;i<400;i++){const a=rand(0,Math.PI*2),r=Math.sqrt(rand(rmin*rmin,rmax*rmax)),x=Math.cos(a)*r,z=Math.sin(a)*r;
+    if(rocks.some(t=>Math.hypot(t.x-x,t.z-z)<minD+t.cr)||caveObstacles.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+1.4))continue;
+    if(Math.hypot(x-CAVE_EXIT.x,z-CAVE_EXIT.z)<4.5)continue;return{x,z};}
+  return null;
+}
+// The cave under the isle: a rocky floor as wide as the isle, a ring of rock wall, stalagmites, glowing crystals in
+// the colour of the isle's best ore, lanterns, and the ore rocks themselves.
+function buildCave(){
+  disposeGroup(caveRoot);caveRoot.add(cavePick);disposeGroup(cavePick);caveObstacles=[CAVE_EXIT,CAVE_SEAT];caveWalls=[];caveLights=[];
+  const P=I.pal,stone=shade(P.rock,-.12),dark=shade(P.rock,-.26),f1=new THREE.Color(shade(P.dirt2,-.12)),f2=new THREE.Color(shade(P.rock,-.2)),fe=new THREE.Color(CAVE_DARK);
+  const geo=new THREE.PlaneGeometry(92,92,72,72);geo.rotateX(-Math.PI/2);const g=geo.toNonIndexed();geo.dispose();
+  const p=g.attributes.position,col=new Float32Array(p.count*3);
+  for(let i=0;i<p.count;i+=3){const cx=(p.getX(i)+p.getX(i+1)+p.getX(i+2))/3,cz=(p.getZ(i)+p.getZ(i+1)+p.getZ(i+2))/3,n=hash2(Math.floor(cx*1.1),Math.floor(cz*1.1));
+    tmpC.copy(f1).lerp(f2,.35+Math.sin(cx*.17)*Math.cos(cz*.13)*.35).offsetHSL(0,0,(n-.5)*.05);if(Math.hypot(cx,cz)>ISLAND)tmpC.copy(fe);
+    for(let k=0;k<3;k++){col[(i+k)*3]=tmpC.r;col[(i+k)*3+1]=tmpC.g;col[(i+k)*3+2]=tmpC.b;}}
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));g.computeVertexNormals();
+  caveFloor=new THREE.Mesh(g,groundMat);caveFloor.receiveShadow=true;caveRoot.add(caveFloor);
+  // The wall: two rings of tall boulders around the edge.
+  for(let ring=0;ring<2;ring++)for(let i=0;i<64;i++){const a=(i+ring*.5)/64*Math.PI*2+rand(-.02,.02),r=ISLAND-.4+ring*1.6+rand(-.3,.4),s=rand(1.6,2.5);
+    const m=mesh(new THREE.DodecahedronGeometry(s,0),(i+ring)%2?stone:dark,Math.cos(a)*r,s*.3,Math.sin(a)*r);m.scale.y=rand(1.3,2.1);m.rotation.set(rand(0,3),rand(0,3),0);
+    caveRoot.add(m);caveWalls.push({m,a});}
+  // The ladder up, in a shaft of daylight.
+  const L=new THREE.Group(),wood='#7a5530';
+  for(const sx of[-1,1]){const rail=mesh(new THREE.BoxGeometry(.1,5,.1),wood,sx*.32,2.3,0);rail.rotation.x=-.18;L.add(rail);}
+  for(let i=0;i<9;i++)L.add(mesh(new THREE.BoxGeometry(.7,.07,.08),shade(wood,-.08),0,.35+i*.5,-.07-i*.09));
+  const beam=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.9,14,10,1,true),new THREE.MeshBasicMaterial({color:0xfff2c0,transparent:true,opacity:.13,depthWrite:false,side:THREE.DoubleSide}));
+  const d=mineDir();L.rotation.y=Math.atan2(d.x,d.z);L.position.set(CAVE_EXIT.x,0,CAVE_EXIT.z);tagEnt(L,CAVE_EXIT);cavePick.add(L);
+  // The daylight isn't clickable, so it never gets in the way of clicking what's behind it.
+  beam.position.set(CAVE_EXIT.x,7,CAVE_EXIT.z);caveRoot.add(beam);caveRoot.add(basic(new THREE.CircleGeometry(1.7,12).rotateX(-Math.PI/2),0xfff2c0,CAVE_EXIT.x,.02,CAVE_EXIT.z,{transparent:true,opacity:.22,depthWrite:false}));
+  const sl=new THREE.PointLight(0xfff0c8,.9,14,1.4);sl.position.set(CAVE_EXIT.x,3,CAVE_EXIT.z);caveRoot.add(sl);
+  // A crate to sit and read on, by a lantern.
+  const cr=buildFurniture('crate','tree');cr.scale.setScalar(.75);cr.position.set(CAVE_SEAT.x,0,CAVE_SEAT.z);cr.rotation.y=.4;tagEnt(cr,CAVE_SEAT);cavePick.add(cr);
+  const lantern=(x,z,light)=>{const l=new THREE.Group();l.add(mesh(new THREE.BoxGeometry(.12,1.8,.12),'#5a3e22',0,.9,0),mesh(new THREE.BoxGeometry(.5,.08,.08),'#5a3e22',.2,1.75,0));
+    l.add(basic(new THREE.BoxGeometry(.24,.3,.24),0xffc860,.4,1.5,0));
+    if(light){const pl=new THREE.PointLight(0xffb060,.9,11,1.5);pl.position.set(.4,1.5,0);l.add(pl);caveLights.push(pl);}
+    l.position.set(x,0,z);l.rotation.y=rand(0,6.28);caveRoot.add(l);caveObstacles.push({x,z,r:.3});};
+  lantern(CAVE_SEAT.x+.9,CAVE_SEAT.z-.6,true);
+  for(const t of I.tiers)for(let i=0;i<(t===I.tiers[0]?5:3);i++){const q=caveSpot(8,34,2.2);if(q)new RockEnt(t,q.x,q.z);}
+  // A lantern beside every few rocks, so the ore is easy to find.
+  rocks.forEach((r,i)=>{if(i%2)return;const a=rand(0,6.28),x=r.x+Math.cos(a)*1.6,z=r.z+Math.sin(a)*1.6;if(Math.hypot(x,z)<CAVE_R-1)lantern(x,z,i%4===0&&caveLights.length<4);});
+  const top=ORE_T[I.tiers[I.tiers.length-1]][2];
+  for(let i=0;i<14;i++){const q=caveSpot(6,36,1.6);if(!q)continue;const c=new THREE.Group();
+    for(let k=0;k<randi(3,5);k++){const s=rand(.14,.32),m=mesh(new THREE.OctahedronGeometry(s,0),top,rand(-.3,.3),s,rand(-.3,.3),{emissive:new THREE.Color(top).multiplyScalar(.35).getHex()});m.scale.y=rand(1.6,2.6);m.rotation.set(rand(-.4,.4),rand(0,3),rand(-.4,.4));c.add(m);}
+    c.position.set(q.x,0,q.z);caveRoot.add(c);caveObstacles.push({x:q.x,z:q.z,r:.45});}
+  for(let i=0;i<28;i++){const q=caveSpot(5,36,1.8);if(!q)continue;const h=rand(.9,2.6),m=mesh(new THREE.ConeGeometry(rand(.3,.55),h,6),chance(.5)?stone:dark,q.x,h/2,q.z);m.rotation.y=rand(0,3);
+    caveRoot.add(m);caveObstacles.push({x:q.x,z:q.z,r:.5});}
+  for(let i=0;i<40;i++){const a=rand(0,6.28),r=rand(4,37),x=Math.cos(a)*r,z=Math.sin(a)*r,s=rand(.12,.3);if(Math.hypot(x-CAVE_EXIT.x,z-CAVE_EXIT.z)<2)continue;
+    const m=mesh(new THREE.DodecahedronGeometry(s,0),dark,x,s*.3,z);m.castShadow=false;caveRoot.add(m);}
+}
+// Hide the stretch of wall between the camera and the rat when the camera swings out past it.
+function updateCaveCutaway(T){
+  const cx=camera.position.x,cz=camera.position.z,out=Math.hypot(cx,cz)>ISLAND-5,ca=Math.atan2(cz,cx);
+  for(const w of caveWalls){let d=Math.abs(w.a-ca)%(Math.PI*2);if(d>Math.PI)d=Math.PI*2-d;w.m.visible=!(out&&d<.55);}
+  caveLights.forEach((l,i)=>{l.intensity=.85+Math.sin(T*9+i*2)*.08+Math.sin(T*23+i)*.05;});
+}
+function goMine(){player.action={type:'mine'};player.stuck=0;}
+function exitMine(){player.action={type:'exit'};player.stuck=0;}
+function enterMine(quiet){
+  if(!onIsle())return;
+  state.loc='mine';showLocation();
+  const d=mineDir();player.x=CAVE_EXIT.x+d.x*2;player.z=CAVE_EXIT.z+d.z*2;player.faceT=player.face=Math.atan2(d.x,d.z);snapCam();
+  if(!quiet)msg(`You climb down into the ${esc(I.name)} mine. Lanterns glint on the ore.`);renderTab();save();
+}
+function leaveMine(quiet){
+  if(!inMine())return;
+  state.loc='island';showLocation();
+  const d=mineDir();player.x=MINE.x+d.x*(MINE.r+.9);player.z=MINE.z+d.z*(MINE.r+.9);player.faceT=player.face=Math.atan2(d.x,d.z);snapCam();
+  if(!quiet)msg('You climb back up into the daylight.');renderTab();save();
 }
 
 /* ================= AUDIO ================= */
@@ -1711,7 +1819,7 @@ function searchNest(i){
   msg(`You search the nest... and find ${art(ITEMS[pick].name)} ${esc(ITEMS[pick].name.toLowerCase())}.`);
 }
 function plantSeed(i){
-  if(inCabin()){msg('You should plant that outside.');return;}
+  if(!onIsle()){msg('You should plant that outside.');return;}
   if(focusing()){busyMsg();return;}
   const s=state.inv[i];const type=ITEMS[s.id].plant;
   const fx=Math.sin(player.face),fz=Math.cos(player.face);let spot=null;
@@ -1726,7 +1834,7 @@ function depositAll(){
   let n=0;state.inv.forEach((s,i)=>{if(s){bankAdd(s.id,s.q);state.inv[i]=null;n++;}});
   renderInv();if(activeTab==='bank')renderBank();msg(n?'You deposit your items into the bank chest.':'You have nothing to deposit.');if(n)sfx.item();
 }
-function nearChest(){return!inCabin()&&Math.hypot(player.x-CHEST.x,player.z-CHEST.z)<CHEST.reach+1.2;}
+function nearChest(){return onIsle()&&Math.hypot(player.x-CHEST.x,player.z-CHEST.z)<CHEST.reach+1.2;}
 const BANK_GROUPS=[['Coins',id=>id==='coins'],['Logs',id=>itemSkill(id)==='woodcutting'],['Ore',id=>itemSkill(id)==='mining'],['Jewellery',id=>itemSkill(id)==='smithing'],
   ['Raw fish',id=>itemSkill(id)==='fishing'],['Cooked fish',id=>itemSkill(id)==='cooking'],['Seeds',id=>!!ITEMS[id].plant],['Treasures',()=>true]];
 function renderBank(){
@@ -1878,27 +1986,42 @@ function renderFocus(){
     <p class="hint">Giving up throws away everything earned since this timer started and unlocks AUTO.</p>`;
     $('#ft-quit').onclick=confirmGiveUp;return;
   }
-  const m=state.settings.focusMin,sk=state.settings.activity;
-  el.innerHTML=`<p class="ttl">Focus timer</p>
-  <p class="sect" style="margin-top:0">Skill${state.settings.auto?' <span class="ok">· AUTO plays this</span>':''}</p>${skillChips(sk,false)}
-  <p class="hint" style="margin-top:2px">${isProc(sk)?`${SKILLS[sk].name} also ${sk==='smithing'?'mines its own ore':sk==='construction'?'chops its own logs':'catches its own fish'} when you run out. Pays 25% more gold.`:`Gathers, banks and repeats.`}</p>
-  <div class="big" id="fm-val">${m}<span style="font-size:16px"> min</span></div>
-  <input type="range" id="fm-range" min="5" max="120" step="5" value="${m}" aria-label="Focus minutes">
-  <div class="chips">${[15,30,45,60,90].map(v=>`<button class="chip ${v===m?'on':''}" data-m="${v}">${v}</button>`).join('')}</div>
-  <div class="reward" id="fm-rew"></div>
+  el.innerHTML=`<p class="ttl">Focus timer</p>${focusSetupHtml()}
   <button class="btn go" id="fm-start">Start focusing</button>
   <p class="hint">While the timer runs the game plays itself and the chosen skill earns +50% XP. Longer sessions pay more per minute. Giving up throws away everything since the timer started.</p>
   <div class="row"><span>Character level</span><span class="v">${C}</span></div>
   <div class="row"><span>Sessions finished</span><span class="v">${state.stats.focusSessions}</span></div>
   <div class="row"><span>Minutes focused</span><span class="v">${state.stats.focusMinutes.toLocaleString()}</span></div>`;
-  const rew=()=>{const v=state.settings.focusMin,s=state.settings.activity;$('#fm-rew').innerHTML=`<span><b>+${focusXpFor(v)}</b> character XP</span><span class="g">+${focusGoldFor(v,s)} gp</span><span>${focusSkillHtml(v,s)}</span>`;};
-  const set=v=>{state.settings.focusMin=v;$('#fm-val').innerHTML=`${v}<span style="font-size:16px"> min</span>`;$('#fm-range').value=v;rew();
+  bindFocusSetup(el,renderFocus);
+  $('#fm-start').onclick=()=>{sfx.init();startFocus(state.settings.focusMin);};
+}
+// Picking a skill and a length, shared by the Focus tab and the Focus button's window.
+function focusSetupHtml(){
+  const m=state.settings.focusMin,sk=state.settings.activity;
+  return `<p class="sect" style="margin-top:0">Skill${state.settings.auto?' <span class="ok">· AUTO plays this</span>':''}</p>${skillChips(sk,false)}
+  <p class="hint" style="margin-top:2px">${isProc(sk)?`${SKILLS[sk].name} also ${sk==='smithing'?'mines its own ore':sk==='construction'?'chops its own logs':'catches its own fish'} when you run out. Pays 25% more gold.`:`Gathers, banks and repeats.`}</p>
+  <div class="big" data-fm="val">${m}<span style="font-size:16px"> min</span></div>
+  <input type="range" data-fm="range" min="5" max="120" step="5" value="${m}" aria-label="Focus minutes">
+  <div class="chips">${[15,30,45,60,90].map(v=>`<button class="chip ${v===m?'on':''}" data-m="${v}">${v}</button>`).join('')}</div>
+  <div class="reward" data-fm="rew"></div>`;
+}
+function bindFocusSetup(el,redraw){
+  const q=k=>el.querySelector(`[data-fm="${k}"]`);
+  const rew=()=>{const v=state.settings.focusMin,s=state.settings.activity;q('rew').innerHTML=`<span><b>+${focusXpFor(v)}</b> character XP</span><span class="g">+${focusGoldFor(v,s)} gp</span><span>${focusSkillHtml(v,s)}</span>`;};
+  const set=v=>{state.settings.focusMin=v;q('val').innerHTML=`${v}<span style="font-size:16px"> min</span>`;q('range').value=v;rew();
     el.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',+c.dataset.m===v));};
   rew();
-  $('#fm-range').oninput=e=>set(+e.target.value);
+  q('range').oninput=e=>set(+e.target.value);
   el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>set(+c.dataset.m));
-  el.querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{state.settings.activity=c.dataset.act;stopAction();updateHud();renderFocus();save();});
-  $('#fm-start').onclick=()=>{sfx.init();startFocus(state.settings.focusMin);};
+  el.querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{state.settings.activity=c.dataset.act;stopAction();updateHud();redraw();if(activeTab==='focus'&&redraw!==renderFocus)renderFocus();save();});
+}
+// The Focus button at the bottom of the screen opens the same choices in a window, ready to start.
+function openFocusModal(){
+  if(focusing()||titleOpen)return;
+  const sc=$('#modal').hidden?0:$('#md-body').scrollTop;
+  modal('Focus timer',`${focusSetupHtml()}<p class="hint">While the timer runs your rat plays by itself, and the skill earns +50% XP. Finish it for character XP and gold.</p>`,
+    [{label:'Start focusing',cls:'go',fn:()=>{sfx.init();startFocus(state.settings.focusMin);}},{label:'Not now'}]);
+  const el=$('#md-body');el.scrollTop=sc;bindFocusSetup(el,openFocusModal);
 }
 function islandStatus(id){const d=ISLANDS[id];return{charOk:charLevel()>=d.char,skOk:gatherLevel()>=d.req};}
 function renderIsles(){
@@ -1948,11 +2071,11 @@ let buildWood='tree';
 function renderCabin(){
   const el=$('#tab-cabin');
   if(!inCabin()){
-    const home=state.island==='greenhaven';
+    const home=state.island==='greenhaven'&&!inMine();
     el.innerHTML=`<p class="ttl">Log cabin</p><p class="hint">Your ${CABIN_LEVELS[state.cabin.level].name.toLowerCase()} stands on Greenhaven. Step inside to build furniture from your logs and change its wood panelling.</p>
       <div class="row"><span>Furniture</span><span class="v">${state.cabin.furniture.length} / ${room().cap}</span></div>
       ${woodPickers()}${state.cabin.woods.length<2?'<p class="hint">Buy more wood styles in the Shop to change the walls and floor.</p>':''}
-      <button class="btn go" id="cb-go" ${home&&!focusing()?'':'disabled'}>${home?'Go inside':'Sail home to Greenhaven first'}</button>
+      <button class="btn go" id="cb-go" ${home&&!focusing()?'':'disabled'}>${home?'Go inside':inMine()?'Climb out of the mine first':'Sail home to Greenhaven first'}</button>
       ${focusing()?'<p class="hint">Available after your focus timer ends.</p>':''}`;
     bindWoodPickers();$('#cb-go').onclick=()=>{player.action={type:'cabin',ent:CABIN};player.stuck=0;};return;
   }
@@ -2012,7 +2135,7 @@ $('#menutoggle').addEventListener('click',()=>{setMenusHidden(!state.settings.hi
 // A short walkthrough: each step rings one menu item (opening its tab if it has one) and explains it in a card.
 const TUT=[
   {title:'Welcome to RatIdle',body:'A focus timer with a rat in it. While you do real work, your rat does its own. Here is the gist.'},
-  {el:'#orb-focus',title:'Focus timers',body:'This is the heart of the game. Press <b>FOCUS</b>, pick a skill and how long, then go do your work. Your rat keeps working the whole time.'},
+  {el:'#focusbtn',title:'Focus timers',body:'This is the heart of the game. Press <b>Focus</b>, pick a skill and how long, then go do your work. Your rat keeps working the whole time.'},
   {el:'#tab-focus',tab:'focus',title:'Finish to get paid',body:'When the timer ends you get <b>character XP</b> and <b>gold</b>. Give up early and you lose everything since it started, so pick a length you can finish.'},
   {el:'#tab-btn-isles',tab:'isles',title:'Level up, sail on',body:'Character levels only come from finished timers. They unlock new <b>isles</b> with better trees, ore and fish.'},
   {el:'#tab-btn-shop',tab:'shop',title:'Spend your gold',body:'Smith ore and cook fish so Hazel the trader pays more, then spend gold here on outfits, books and a bigger cabin.'},
@@ -2082,6 +2205,7 @@ function setAuto(on){
 $('#orb-auto').addEventListener('click',()=>{sfx.init();if(focusing()){showTab('focus');setAuto(false);return;}setAuto(!state.settings.auto);showTab('focus');});
 $('#orb-focus').addEventListener('click',()=>{sfx.init();showTab('focus');});
 $('#focuspill').addEventListener('click',()=>showTab('focus'));
+$('#focusbtn').addEventListener('click',()=>{sfx.init();openFocusModal();});
 function updatePovBar(){const v=state.settings.focusPov||'follow';document.querySelectorAll('#povbar [data-pov]').forEach(b=>b.classList.toggle('on',b.dataset.pov===v));}
 document.querySelectorAll('#povbar [data-pov]').forEach(b=>b.addEventListener('click',()=>{state.settings.focusPov=b.dataset.pov;updatePovBar();save();}));
 $('#pb-rot').addEventListener('click',()=>rotatePlacing());
@@ -2199,6 +2323,7 @@ function giveUpFocus(){
   msg('You gave up the timer. Everything earned since it started has been thrown away. AUTO is unlocked.','m-red');save();
 }
 function updateFocusHud(force){
+  const fb=$('#focusbtn'),hideBtn=focusing()||titleOpen||!!placing;if(fb.hidden!==hideBtn)fb.hidden=hideBtn;
   const pill=$('#focusbox');document.body.classList.toggle('focusing',focusing());
   if(!focusing()){if(!pill.hidden||force){pill.hidden=true;document.title='RatIdle';}return;}
   if(pill.hidden||force)updatePovBar();
@@ -2218,7 +2343,7 @@ function sailTo(id){
   if(id===state.island)return;
   const fade=$('#fade');fade.style.opacity=1;stopAction();
   setTimeout(()=>{
-    if(inCabin())state.loc='island';
+    state.loc='island';
     state.island=id;buildIsland(id);showLocation();
     player.x=0;player.z=36.6;player.faceT=player.face=Math.PI;snapCam();
     fade.style.opacity=0;banner(d.name,d.desc);msg(`You row across to ${d.name}. Hazel waves from her stall.`);renderTab();save();
@@ -2229,11 +2354,11 @@ function buildIsland(id){
   for(const k in I.pal)GC[k]=new THREE.Color(I.pal[k]);
   scene.background.set(I.sky);scene.fog.color.set(I.sky);water.material.color.set(I.water);water.material.opacity=I.wop||.86;hemi.groundColor.set(I.pal.g3);
   disposeGroup(worldRoot);disposeGroup(pickRoot);trees.length=0;rocks.length=0;spots.length=0;obstacles.length=0;npcs=[];clearFloor();
-  obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,{x:SEAT.x,z:SEAT.z,r:.45});
-  buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();
+  obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,MINE,{x:SEAT.x,z:SEAT.z,r:.45});
+  buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();buildMine();
   if(id==='greenhaven')buildCabinExterior();
   buildDecor();buildMapImg();
-  for(const t of I.tiers)for(let i=0;i<(t===I.tiers[0]?5:3);i++){const p=findSpot(8,34,2.2);if(p)new RockEnt(t,p.x,p.z);}
+  buildCave();
   layoutFishAreas();I.tiers.forEach((t,i)=>{for(let k=0;k<2;k++)new FishSpot(t,fishAreas[i]);});
   // The deep water off each end of the dock's platform holds one of the isle's fish, and can only be reached from the dock.
   DOCK_SPOTS.forEach((d,i)=>{const dk=new FishSpot(I.tiers[i?I.tiers.length-1:0],[{x:d.x,z:d.z}]);dk.stand=d.stand;dk.dock=true;});
@@ -2245,6 +2370,7 @@ function buildIsland(id){
 function stopAction(){player.action=null;player.idle=0;}
 function walkTo(x,z){
   if(inCabin()){const R=room();x=clamp(x,INT.x-R.w/2+.45,INT.x+R.w/2-.45);z=clamp(z,INT.z-R.d/2+.45,INT.z+R.d/2-.45);}
+  else if(inMine()){const r=Math.hypot(x,z),m=CAVE_R-.2;if(r>m){x*=m/r;z*=m/r;}}
   else if(Math.hypot(x,z)>ISLAND-2.4&&dockDist(x,z)<1){const p=dockSnap(x,z);x=p.x;z=p.z;}
   else{const r=Math.hypot(x,z),m=ISLAND-2.4;if(r>m){x*=m/r;z*=m/r;}}
   player.action={type:'walk',x,z};player.stuck=0;
@@ -2313,11 +2439,14 @@ function entOpts(ent,point){
   else if(ent&&ent.kind==='trader')o.push({a:'Trade',t:'Hazel',tc:'c-npc',fn:()=>{player.action={type:'trade',ent:TRADER};player.stuck=0;}},
     {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},walk,ex('Hazel',TRADER.ex));
   else if(ent&&ent.kind==='npc')o.push({a:'Talk-to',t:ent.name,tc:'c-npc',fn:()=>{ent.hold=12;const t=()=>talkNpc(ent);if(focusing())t();else useAt(ent.x,ent.z,ent.reach,t);}},walk,
-    ex(ent.name,`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up, and spends the day ${{woodcutting:'among the trees',mining:'by the rocks',fishing:'down by the fishing spots',smithing:'by the furnace',cooking:'by the campfire'}[npcSkill(ent.isle,ent.j)]}. ${boostText(ent.isle,ent.j)}, on every isle.`));
+    ex(ent.name,`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up, and spends the day ${{woodcutting:'among the trees',mining:'by the mine entrance',fishing:'down by the fishing spots',smithing:'by the furnace',cooking:'by the campfire'}[npcSkill(ent.isle,ent.j)]}. ${boostText(ent.isle,ent.j)}, on every isle.`));
   else if(ent&&ent.kind==='ground'){const d=ITEMS[ent.id];o.push({a:'Take',t:d.name+(ent.q>1?` (${ent.q.toLocaleString()})`:''),tc:'c-item',fn:()=>takeFloor(ent)},walk,{a:'Examine',t:d.name,tc:'c-item',fn:()=>msg(itemEx(ent.id))});}
   else if(ent&&ent.kind==='dock')o.push(walk,ex('Dock',DOCK.ex));
   else if(ent&&ent.kind==='boat')o.push({a:'Travel',t:'Rowing boat',fn:()=>{player.action={type:'boat',ent:BOAT};player.stuck=0;}},walk,ex('Rowing boat',BOAT.ex));
   else if(ent&&ent.kind==='cabin')o.push({a:'Enter',t:'Log cabin',fn:()=>{player.action={type:'cabin',ent:CABIN};player.stuck=0;}},walk,ex('Log cabin',CABIN.ex));
+  else if(ent&&ent.kind==='mine')o.push({a:'Enter',t:MINE.name,fn:goMine},walk,ex(MINE.name,MINE.ex));
+  else if(ent&&ent.kind==='exit')o.push({a:'Climb-up',t:CAVE_EXIT.name,fn:exitMine},walk,ex(CAVE_EXIT.name,CAVE_EXIT.ex));
+  else if(ent&&ent.kind==='cseat')o.push({a:'Sit',t:CAVE_SEAT.name,fn:()=>setRest(true,'relax')},walk,ex(CAVE_SEAT.name,CAVE_SEAT.ex));
   else if(ent&&ent.kind==='door')o.push({a:'Exit',t:'Door',fn:()=>{player.action={type:'door'};player.stuck=0;}},ex('Door',DOOR.ex));
   else if(ent&&ent.kind==='furn'){const f=state.cabin.furniture[ent.idx];
     o.push(furnAction(f,ent));
@@ -2389,10 +2518,13 @@ function autoStuck(){
 function autoNext(){
   if(inCabin()||player.restMode)return;
   if(autoStuck())return;
-  const act=activity(),gs=GATHER_OF[act];
+  const act=activity(),gs=GATHER_OF[act],m=inMine();
   // Processing skills gather a full pack first (or use stock already banked), then process it all in one go.
-  if(isProc(act)){const r=bestRecipe(act);if(r&&(!invFree()||(state.bank[r.input]||0)>=r.n)){startProcess(act,null,true);return;}}
-  if(!invFree()){goBank();return;}
+  // The furnace, fire, hut and bank are all up top, so climb out of the mine for them.
+  if(isProc(act)){const r=bestRecipe(act);if(r&&(!invFree()||(state.bank[r.input]||0)>=r.n)){if(m)exitMine();else startProcess(act,null,true);return;}}
+  if(!invFree()){if(m)exitMine();else goBank();return;}
+  // Ore is only down the mine, and everything else only up top.
+  if((gs==='mining')!==m){if(m)exitMine();else goMine();return;}
   const L=level(gs);let best=null,bs=-1;
   for(const e of gatherEnts()){if(e.skill!==gs||!e.available()||e.def.lvl>L)continue;const d=Math.hypot(e.x-player.x,e.z-player.z);
     const cy=cycleFor(gs,e.def),sc=(e.def.xp*gatherChance(gs,e.def))/cy/(1+d/(SPEED*cy*2.5));if(sc>bs){bs=sc;best=e;}}
@@ -2514,6 +2646,7 @@ let restStart=0,restPrev=null,restSpot=null;
 function seatPos(){
   if(restSpot)return restSpot;
   if(inCabin()){const R=room();return{x:INT.x+1.25,z:INT.z-R.d/2+1.55,face:Math.atan2(-1.25,-1.05)};}
+  if(inMine())return{x:CAVE_SEAT.x,z:CAVE_SEAT.z,face:Math.atan2(-CAVE_SEAT.x,-CAVE_SEAT.z),pose:'sit',h:.42};
   return{x:SEAT.x,z:SEAT.z,face:Math.atan2(FIRE.x-SEAT.x,FIRE.z-SEAT.z)};
 }
 const bookTitle=()=>`<i>${esc(BOOKS[state.book].title)}</i>`;
@@ -2537,7 +2670,7 @@ function setRest(on,mode='away',noReturn=false,spot=null){
     const a=player.action;
     restPrev={x:player.x,z:player.z,action:a&&a.type!=='walk'&&a.type!=='return'?a:null};
     player.restMode=mode;restStart=Date.now();restSnap=gainSnap();player.action={type:'toSeat'};player.stuck=0;restSpot=mode==='relax'?spot:null;
-    if(mode==='relax')msg(spot?spot.say:`You head to the fire to read <i>${esc(BOOKS[state.book].title)}</i>.`);
+    if(mode==='relax')msg(spot?spot.say:`You head ${inMine()?'over to the crate':'to the fire'} to read <i>${esc(BOOKS[state.book].title)}</i>.`);
     if(document.hidden)sitNow();   // nothing is drawn while hidden, so sit straight away
   }else{
     if(!player.restMode)return;
@@ -2591,10 +2724,11 @@ addEventListener('focus',()=>comeBack());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)goAway();else if(document.hasFocus()||RN||!userEngaged)comeBack();});
 
 /* ================= PLAYER UPDATE ================= */
-function colliders(){if(inCabin())return furnColl;const c=[];for(const t of trees)if(t.r>0)c.push(t);return c.concat(rocks,obstacles);}
+function colliders(){if(inCabin())return furnColl;if(inMine())return rocks.concat(caveObstacles);const c=[];for(const t of trees)if(t.r>0)c.push(t);return c.concat(obstacles);}
 function clampToArea(){
   if(inCabin()){const R=room();player.x=clamp(player.x,INT.x-R.w/2+.45,INT.x+R.w/2-.45);player.z=clamp(player.z,INT.z-R.d/2+.45,INT.z+R.d/2-.45);return;}
-  const r=Math.hypot(player.x,player.z),lim=ISLAND-2.2;if(r<=lim)return;
+  const r=Math.hypot(player.x,player.z),lim=inMine()?CAVE_R:ISLAND-2.2;if(r<=lim)return;
+  if(inMine()){player.x*=lim/r;player.z*=lim/r;return;}
   // Past the shore, the only ground is the dock.
   if(dockDist(player.x,player.z)<.8){const p=dockSnap(player.x,player.z);player.x=p.x;player.z=p.z;return;}
   player.x*=lim/r;player.z*=lim/r;
@@ -2602,7 +2736,7 @@ function clampToArea(){
 function stepToward(gx,gz,dt){
   // On and off the dock, go by its foot and the top of the walkway, so the rat never wades along the shore.
   let via=false;const pp=dockPart(player.x,player.z),gp=dockPart(gx,gz);
-  if(!inCabin()){
+  if(onIsle()){
     if(gp!=='land'&&pp==='land'&&Math.abs(player.x)>.55){gx=0;gz=37.2;via=true;}
     else if(gp==='plat'&&pp!=='plat'&&player.z<41){gx=0;gz=41.8;via=true;}
     else if(pp==='plat'&&gp!=='plat'&&Math.abs(player.x)>.6){gx=0;gz=41.8;via=true;}
@@ -2665,6 +2799,10 @@ function updatePlayer(dt){
     }else if(a.type==='cabin'){
       const door={x:CABIN.x,z:CABIN.z+CABIN.r+.35};
       if(stepToward(door.x,door.z,dt)||player.stuck>1.2){stopAction();enterCabin();}
+    }else if(a.type==='mine'){
+      const d=mineDoor();if(stepToward(d.x,d.z,dt)||player.stuck>1.2){stopAction();enterMine(state.settings.auto||focusing());}
+    }else if(a.type==='exit'){
+      if(approach(CAVE_EXIT,CAVE_EXIT.reach,dt)||player.stuck>1.2){stopAction();leaveMine(state.settings.auto||focusing());}
     }else if(a.type==='door'){
       const R=room();if(stepToward(INT.x,INT.z+R.d/2-.55,dt)||player.stuck>1.2){stopAction();leaveCabin();}
     }
@@ -2721,10 +2859,10 @@ function updateCamera(dt){
   cam.yaw=lerp(cam.yaw,gYaw,k);cam.pitch=lerp(cam.pitch,gPitch,k);cam.dist=lerp(cam.dist,gDist,k);
   const f=Math.min(1,dt*(pov==='island'||Math.abs(cam.tx-gx)>6?3:8));cam.tx=lerp(cam.tx,gx,f);cam.ty=lerp(cam.ty,gy,f);cam.tz=lerp(cam.tz,gz,f);
   const cp=Math.cos(cam.pitch);let x=cam.tx+Math.sin(cam.yaw)*cp*cam.dist,y=cam.ty+Math.sin(cam.pitch)*cam.dist,z=cam.tz+Math.cos(cam.yaw)*cp*cam.dist;
-  y=inCabin()?Math.max(y,.8):Math.max(y,height(x,z)+.6,WATER_Y+.5);
+  y=inCabin()||inMine()?Math.max(y,.8):Math.max(y,height(x,z)+.6,WATER_Y+.5);
   camera.position.set(x,y,z);camera.lookAt(cam.tx,cam.ty,cam.tz);
   sun.position.set(cam.tx+18,cam.ty+30,cam.tz+10);sun.target.position.set(cam.tx,cam.ty,cam.tz);
-  scene.fog.near=cam.dist+25;scene.fog.far=cam.dist+85;
+  const fg=inMine()?[12,60]:[25,85];scene.fog.near=cam.dist+fg[0];scene.fog.far=cam.dist+fg[1];
   // In the island view the rat and its pet are drawn larger so they stay easy to spot.
   const big=lerp(P.g.scale.x,pov==='island'?2:1,k);P.g.scale.setScalar(big);if(pet)pet.g.scale.setScalar(big);
   markRing.visible=pov!=='follow';
@@ -2733,13 +2871,13 @@ function updateCamera(dt){
 const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 function pick(cx,cy){
   ndc.set(cx/innerWidth*2-1,-(cy/VH)*2+1);ray.setFromCamera(ndc,camera);
-  const c=inCabin(),base=c?floorPick:ground;
-  const hits=ray.intersectObjects(c?[floorPick,intPick,groundRoot]:[ground,pickRoot,groundRoot],true);
+  const c=inCabin(),mn=inMine(),base=c?floorPick:mn?caveFloor:ground;
+  const hits=ray.intersectObjects(c?[floorPick,intPick,groundRoot]:mn?[caveFloor,cavePick,groundRoot]:[ground,pickRoot,groundRoot],true);
   const shown=o=>{for(;o;o=o.parent)if(!o.visible&&o!==floorPick)return false;return true;};
   for(const h of hits){if(!shown(h.object))continue;const e=h.object.userData.ent;if(e)return{ent:e,point:h.point};
     if(h.object===base){
       // The shoreline can hide a fishing spot's ripples, so ground clicks just next to one count as clicking the spot.
-      if(!c){const p=h.point,sp=spots.find(s=>Math.hypot(s.x-p.x,s.z-p.z)<2.4);if(sp)return{ent:sp,point:p};}
+      if(onIsle()){const p=h.point,sp=spots.find(s=>Math.hypot(s.x-p.x,s.z-p.z)<2.4);if(sp)return{ent:sp,point:p};}
       return{ent:null,point:h.point};}}
   return null;
 }
@@ -2798,16 +2936,22 @@ function buildMapImg(){const c=document.createElement('canvas');const N=216;c.wi
   g.putImageData(im,0,0);mapImg=c;}
 function drawMinimap(){
   const W=mm.width,c=W/2,g=mctx;g.save();g.clearRect(0,0,W,W);g.beginPath();g.arc(c,c,c,0,Math.PI*2);g.clip();
-  g.fillStyle=inCabin()?'#1a1410':'#'+new THREE.Color(I.water).multiplyScalar(.75).getHexString();g.fillRect(0,0,W,W);
+  g.fillStyle=inCabin()?'#1a1410':inMine()?'#0b0907':'#'+new THREE.Color(I.water).multiplyScalar(.75).getHexString();g.fillRect(0,0,W,W);
   const S=MM_S*(inCabin()?2:1);g.save();g.translate(c,c);g.rotate(cam.yaw);g.scale(S,S);g.translate(-player.x,-player.z);
   if(inCabin()){const R=room();g.fillStyle=woodRing(state.cabin.floor);g.fillRect(INT.x-R.w/2,INT.z-R.d/2,R.w,R.d);
     g.strokeStyle=woodBark(state.cabin.wall);g.lineWidth=.4;g.strokeRect(INT.x-R.w/2,INT.z-R.d/2,R.w,R.d);
     g.fillStyle='#ff6a00';g.fillRect(INT.x-.6,INT.z-R.d/2+.2,1.2,.6);
     for(const f of state.cabin.furniture){g.fillStyle=woodBark(f.wood);const r=FURN[f.type].r;g.fillRect(INT.x+f.dx-r,INT.z+f.dz-r,r*2,r*2);}
+  }else if(inMine()){
+    g.fillStyle=shade(I.pal.dirt2,-.14);g.beginPath();g.arc(0,0,ISLAND-.4,0,Math.PI*2);g.fill();
+    g.strokeStyle=shade(I.pal.rock,-.2);g.lineWidth=2;g.stroke();
+    for(const r of rocks){g.fillStyle=r.state==='full'?r.def.color:'#6e6b66';g.fillRect(r.x-.6,r.z-.6,1.2,1.2);}
+    g.fillStyle='#fff2c0';g.beginPath();g.arc(CAVE_EXIT.x,CAVE_EXIT.z,1.1,0,Math.PI*2);g.fill();
+    if(pet){g.fillStyle='#ffff00';g.fillRect(pet.x-.4,pet.z-.4,.8,.8);}
   }else{
     g.imageSmoothingEnabled=false;g.drawImage(mapImg,-54,-54,108,108);
     for(const t of trees){g.fillStyle=t.state==='alive'?t.def.map:t.state==='sapling'?'#9fe070':'#6a4a2a';g.beginPath();g.arc(t.x,t.z,t.state==='alive'?.9:.5,0,Math.PI*2);g.fill();}
-    for(const r of rocks){g.fillStyle=r.state==='full'?r.def.color:'#6e6b66';g.fillRect(r.x-.6,r.z-.6,1.2,1.2);}
+    g.fillStyle='#2a2018';g.strokeStyle=I.pal.rock;g.lineWidth=.5;g.beginPath();g.arc(MINE.x,MINE.z,1.4,0,Math.PI*2);g.fill();g.stroke();
     for(const s of spots){g.fillStyle='#e8f6ff';g.beginPath();g.arc(s.x,s.z,.8,0,Math.PI*2);g.fill();}
     g.fillStyle='#ffe040';for(const e of npcs){g.beginPath();g.arc(e.x,e.z,.55,0,Math.PI*2);g.fill();}
     g.fillStyle='#ffd400';g.strokeStyle='#000';g.lineWidth=.3;g.beginPath();g.arc(CHEST.x,CHEST.z,1.1,0,Math.PI*2);g.fill();g.stroke();
@@ -2818,7 +2962,7 @@ function drawMinimap(){
     if(state.island==='greenhaven'){g.fillStyle=woodBark(state.cabin.wall);g.fillRect(CABIN.x-CABIN.r*.85,CABIN.z-CABIN.r*.7,CABIN.r*1.7,CABIN.r*1.4);}
     if(pet){g.fillStyle='#ffff00';g.fillRect(pet.x-.4,pet.z-.4,.8,.8);}
   }
-  g.fillStyle='#ff3030';for(const f of floorItems)g.fillRect(f.x-.35,f.z-.35,.7,.7);
+  g.fillStyle='#ff3030';for(const f of floorItems)if(f.loc===state.loc)g.fillRect(f.x-.35,f.z-.35,.7,.7);
   const a=player.action;if(a&&a.type==='walk'){g.fillStyle='#ff2020';g.fillRect(a.x-.5,a.z-.5,1,1);}
   g.restore();g.fillStyle='#fff';g.fillRect(c-2,c-2,4,4);g.restore();
   const nx=Math.sin(cam.yaw),ny=-Math.cos(cam.yaw);const cx=20,cy=20;
@@ -2927,10 +3071,11 @@ function frame(){
   if(!titleOpen)updatePlayer(dt);animatePlayer(dt,T);updatePet(dt,T);
   for(let i=trees.length-1;i>=0;i--)trees[i]&&trees[i].update(dt,T);
   for(const r of rocks)r.update(dt,T);
-  if(!inCabin()){for(const s of spots)s.update(dt,T);updateNpcs(dt,T);updateShips(dt,T);}
+  if(onIsle()){for(const s of spots)s.update(dt,T);updateNpcs(dt,T);updateShips(dt,T);}
   updateFloor(dt,T);
   updateReading(dt);updateParts(dt);updateCamera(dt);
   if(inCabin()){updateCutaway();if(hearthFlames[0]){hearthFlames[0].scale.y=1+Math.sin(T*13)*.2;hearthFlames[1].scale.y=1+Math.sin(T*17+1)*.25;}}
+  else if(inMine())updateCaveCutaway(T);
   else{updateWater(T);if(fireFlames[0]){fireFlames[0].scale.set(1+Math.sin(T*13)*.08,1+Math.sin(T*9)*.18,1);fireFlames[1].scale.y=1+Math.sin(T*15+1)*.22;fireLight.intensity=1+Math.sin(T*11)*.15+Math.sin(T*23)*.08;}
     if(furnaceGlow)furnaceGlow.material.color.copy(furnaceGlow.userData.base).multiplyScalar(.88+Math.sin(T*6)*.12);
     if(hazel)hazel.rotation.y=Math.sin(T*.4)*.3;
@@ -2953,7 +3098,7 @@ function showTitle(){
   if(slot&&!titleOpen)save();
   if(player.restMode){player.restMode=null;player.resting=false;}
   stopAction();cancelPlacing();closeMenu();$('#modal').hidden=true;closeTutorial();
-  titleOpen=true;$('#title').hidden=false;$('#focusbox').hidden=true;document.body.classList.remove('focusing');document.title='RatIdle';renderTitle();
+  titleOpen=true;$('#title').hidden=false;$('#focusbox').hidden=true;$('#focusbtn').hidden=true;document.body.classList.remove('focusing');document.title='RatIdle';renderTitle();
 }
 function renderTitle(){
   $('#slots').innerHTML=SLOTS.map(n=>{const raw=readSlotRaw(n);
