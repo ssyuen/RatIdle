@@ -117,6 +117,8 @@ body{font-family:var(--font);font-size:15px;user-select:none;-webkit-user-select
 #tabs button{background:var(--stone-2);color:#d8c8a8;border:0;border-right:2px solid var(--stone-0);border-bottom:2px solid var(--stone-0);font:600 12px var(--font);padding:5px 0 4px;cursor:pointer;text-shadow:1px 1px 0 #000}
 #tabs button:nth-child(5n){border-right:0}
 #tabs button.active{background:#7a2d1c;color:var(--white);box-shadow:inset 0 -2px 0 #b4492c}
+#side.collapsed #panel .tab{display:none!important}
+#side.collapsed #tabs button.active{background:var(--stone-2);color:#d8c8a8;box-shadow:none}
 .tab{--tab-room:calc((100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px);
   padding:8px;min-height:min(268px,var(--tab-room));max-height:min(56vh,var(--tab-room));overflow:auto;touch-action:pan-y;box-sizing:border-box}
 @supports (height:100dvh){.tab{--tab-room:calc((100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 8px) / var(--side-scale) - 190px - var(--tabs-h) - 6px)}}
@@ -267,7 +269,6 @@ body.touch #focuspill{padding:6px 14px 7px}
   #chatlog{font-size:12px}
   #xpdrops{right:calc(205px + env(safe-area-inset-right,0px))}
   body.nomenus #xpdrops{right:calc(140px + env(safe-area-inset-right,0px))}
-  #side.collapsed #panel .tab{display:none!important}
   #bagtoggle{display:block}
   #focuspill{min-width:0}
   #placebar{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
@@ -1771,7 +1772,8 @@ function showTab(t){
   for(const k in RENDER)$('#tab-'+k).hidden=k!==t;renderTab();
 }
 document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>{
-  if(b.dataset.tab===activeTab&&innerWidth<=760){const s=$('#side');s.classList.toggle('collapsed');$('#bagtoggle').textContent=s.classList.contains('collapsed')?'Show pack':'Hide pack';return;}
+  // Clicking the open tab again closes it; clicking it once more reopens it.
+  if(b.dataset.tab===activeTab){const s=$('#side');s.classList.toggle('collapsed');$('#bagtoggle').textContent=s.classList.contains('collapsed')?'Show pack':'Hide pack';return;}
   showTab(b.dataset.tab);
 }));
 $('#bagtoggle').addEventListener('click',()=>{const s=$('#side');s.classList.toggle('collapsed');$('#bagtoggle').textContent=s.classList.contains('collapsed')?'Show pack':'Hide pack';});
@@ -2271,12 +2273,30 @@ function turnPage(){
 }
 function updateRelaxOrb(){const o=$('#orb-relax');o.classList.toggle('on',!!player.restMode);$('#orb-rstate').textContent=player.restMode?'ON':'OFF';}
 $('#orb-relax').addEventListener('click',()=>{sfx.init();if(player.restMode)setRest(false,'relax');else setRest(true,'relax');});
-window.__ratidleRest=on=>{try{setRest(!!on,'away');}catch(e){}};
+// Leaving the game only sends the rat to read when it has nothing to do. With AUTO on (or a focus timer) it keeps
+// working, and coming back shows what it got done.
+let awaySnap=null,awayStart=0,awaySlot=null;
+function goAway(){
+  if(titleOpen)return;
+  if(state.settings.auto||focusing()){if(!awaySnap&&!player.restMode){awaySnap=gainSnap();awayStart=Date.now();awaySlot=slot;}return;}
+  setRest(true,'away');
+}
+function comeBack(){
+  if(awaySnap){
+    const snap=awaySnap,wall=Date.now(),secs=(wall-awayStart)/1000;awaySnap=null;
+    if(awaySlot===slot&&!titleOpen){
+      if(wall-lastWall>30000&&!player.restMode)catchUp((wall-lastWall)/1000,'While you were away');
+      lastWall=wall;if(secs>=30)showGains(snap,secs,'You were away');
+    }
+  }
+  setRest(false,'away');
+}
+window.__ratidleRest=on=>{try{on?goAway():comeBack();}catch(e){}};
 let userEngaged=false;
 addEventListener('pointerdown',()=>{userEngaged=true;},{capture:true});
-addEventListener('blur',()=>{if(userEngaged)setRest(true,'away');});
-addEventListener('focus',()=>setRest(false,'away'));
-document.addEventListener('visibilitychange',()=>{if(document.hidden)setRest(true,'away');else if(document.hasFocus()||RN||!userEngaged)setRest(false,'away');});
+addEventListener('blur',()=>{if(userEngaged)goAway();});
+addEventListener('focus',()=>comeBack());
+document.addEventListener('visibilitychange',()=>{if(document.hidden)goAway();else if(document.hasFocus()||RN||!userEngaged)comeBack();});
 
 /* ================= PLAYER UPDATE ================= */
 function colliders(){if(inCabin())return furnColl;const c=[];for(const t of trees)if(t.r>0)c.push(t);return c.concat(rocks,obstacles);}
@@ -2597,7 +2617,7 @@ addEventListener('resize',resize);
 let T=0,last=performance.now(),lastWall=Date.now(),hoverTick=0,slowTick=0,lastNear=null;
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;T+=dt;
-  const wall=Date.now();if(wall-lastWall>30000&&!player.restMode&&!titleOpen){const snap=gainSnap(),secs=(wall-lastWall)/1000;catchUp(secs,'While the game was in the background');showGains(snap,secs,'The game was in the background');}lastWall=wall;
+  const wall=Date.now();if(wall-lastWall>30000&&!player.restMode&&!titleOpen){if(awaySnap)comeBack();else{const snap=gainSnap(),secs=(wall-lastWall)/1000;catchUp(secs,'While the game was in the background');showGains(snap,secs,'The game was in the background');}}lastWall=wall;
   if(!titleOpen)updatePlayer(dt);animatePlayer(dt,T);updatePet(dt,T);
   for(let i=trees.length-1;i>=0;i--)trees[i]&&trees[i].update(dt,T);
   for(const r of rocks)r.update(dt,T);
