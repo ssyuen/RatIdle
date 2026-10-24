@@ -186,6 +186,11 @@ html.pwa .tab{--tab-room:calc((var(--app-h,100vh) - env(safe-area-inset-top,0px)
 input[type=range]{width:100%;accent-color:#c8901c}
 .reward{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 14px;font-size:13px;margin:4px 0;text-shadow:1px 1px 0 #000}
 .reward b{color:var(--yellow)} .reward .g{color:var(--gold)}
+/* RatIdle Pro: locked skills, damage numbers */
+.skchip.lock{opacity:.55;position:relative}.skchip.lock::after{content:"\1F512";position:absolute;right:1px;top:0;font-size:9px}
+.skrow.lock{opacity:.62}
+.splat{position:fixed;transform:translate(-50%,-50%);z-index:3;pointer-events:none;color:#fff;font:600 13px var(--font);padding:0 6px;border-radius:9px;border:1px solid #000;text-shadow:1px 1px 0 #000;animation:splat .9s ease-out forwards}
+@keyframes splat{from{transform:translate(-50%,-50%)}to{transform:translate(-50%,-170%);opacity:0}}
 /* chat */
 #chat{position:fixed;left:env(safe-area-inset-left,0px);bottom:env(safe-area-inset-bottom,0px);width:min(520px,calc(100vw - 262px));height:150px;background:rgba(216,199,160,.92);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3);color:var(--parch-ink);z-index:4;display:flex;flex-direction:column}
 #chatlog{flex:1;overflow-y:auto;padding:4px 8px;font-size:14px;line-height:1.25;user-select:text;-webkit-user-select:text;touch-action:pan-y}
@@ -306,7 +311,7 @@ body.touch #focuspill{padding:6px 14px 7px}
 </div>
 <div id="side">
   <div id="mapwrap">
-    <div id="xpbox"><span id="hud-sk">WC</span> <b id="xplvl">1</b> · Lv <b id="chlvl">1</b><br><span class="gp" id="gptot">0 gp</span></div>
+    <div id="xpbox"><span id="hud-sk">WC</span> <b id="xplvl">1</b> · Lv <b id="chlvl">1</b><br><span class="gp" id="gptot">0 gp</span><span id="hud-hp" hidden></span></div>
     <button class="orb" id="orb-auto" title="Auto-play the selected skill (idle mode)"><span class="ol" id="orb-state">OFF</span>AUTO</button>
     <button class="orb" id="orb-focus" title="Focus timer"><span class="ol" id="orb-fstate">GO</span>FOCUS</button>
     <button class="orb" id="orb-relax" title="Relax: sit by the fire and read"><span class="ol" id="orb-rstate">OFF</span>READ</button>
@@ -365,6 +370,25 @@ const RN=window.ReactNativeWebView||null;
 const IS_TOUCH=!!RN||!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
 if(IS_TOUCH)document.body.classList.add('touch');
 function native(m){if(RN)try{RN.postMessage(JSON.stringify(m));}catch(e){}}
+// RatIdle Pro is bought through the app store, so it only exists in the app. The app passes the entitlement in as
+// window.__RATIDLE_PRO__ and calls __ratidlePro whenever it changes, with an optional message about a purchase.
+// Until the app has heard from the store, the last answer it gave is used, so a slow start never locks Pro content.
+const sanePro=p=>{p=p&&typeof p==='object'?p:{};
+  return {available:!!RN&&p.available===true,pro:p.pro===true,price:typeof p.price==='string'?p.price.slice(0,24):null};};
+const PRO_KEY='ratidle-pro';
+let PRO=sanePro(window.__RATIDLE_PRO__);
+if(RN&&!PRO.available)try{PRO.pro=localStorage.getItem(PRO_KEY)==='1';}catch(e){}
+window.__ratidlePro=(p,text)=>{const was=PRO.pro;PRO=sanePro(p);
+  if(PRO.available)try{localStorage.setItem(PRO_KEY,PRO.pro?'1':'0');}catch(e){}
+  if(!slot||titleOpen)return;
+  if(typeof text==='string'&&text)msg(esc(text.slice(0,200)),PRO.pro?'m-green':'m-blue');
+  if(PRO.pro!==was){refreshTools();if(PRO.pro){$('#modal').hidden=true;banner('RatIdle Pro','Twelve new skills unlocked. Thank you!');native({type:'haptic',style:'success'});}}
+  if(state.hp==null||state.hp>maxHp())state.hp=maxHp();
+  updateHud();renderTab();};
+function proStatus(){
+  if(!PRO.pro)return `Unlock twelve more skills (six for combat, plus Alchemy, Farming, Agility, Thieving, Runecrafting and Fletching) with a one-time purchase${PRO.price?` of ${esc(PRO.price)}`:''}.`;
+  return 'You have RatIdle Pro. Thank you!';
+}
 // Height of the game area: the full screen when installed to the home screen (see the <head> script), else the window.
 let VH=innerHeight;
 const measureVH=()=>{VH=parseFloat(document.documentElement.style.getPropertyValue('--app-h'))||innerHeight;};
@@ -524,8 +548,8 @@ const levelFor=xp=>{let l=1;while(l<99&&XP_TABLE[l]<=xp)l++;return l;};
 const charXpFor=L=>50*L*(L-1);
 const charLevelFor=x=>{let L=1;while(L<99&&charXpFor(L+1)<=x)L++;return L;};
 const focusXpFor=min=>Math.round(min*10*(1+min/100));
-const focusGoldFor=(min,sk)=>Math.round(min*4*(1+min/100)*(isProc(sk)?1.25:1));
-const focusSkillXpFor=(min,sk)=>Math.round(min*15*(1+min/100)*(isProc(sk)?1.2:1));
+const focusGoldFor=(min,sk)=>Math.round(min*4*(1+min/100)*(isProc(sk)||CRAFT_SKILLS.includes(sk)?1.25:1));
+const focusSkillXpFor=(min,sk)=>Math.round(min*15*(1+min/100)*(isProc(sk)||CRAFT_SKILLS.includes(sk)?1.2:1));
 // Construction is measured in hut progress, not XP. Each isle's hut needs PROJECT_PTS build points.
 const PROJECT_PTS=600,FOCUS_BUILD_DIV=30;
 // Prestige medals: each prestige of a 99 skill resets it to level 1 and awards the next tier.
@@ -579,7 +603,7 @@ const npcSkill=(isle,j)=>NPC_SKILLS[(ISLAND_ORDER.indexOf(isle)+j)%5];
 const npcEarned=frac=>Math.min(5,Math.floor(frac*5+1e-9));
 // The help a skill gets from villagers of one kind (0 if that villager hasn't moved in).
 function boost(kind,sk){let t=0;for(const isle of ISLAND_ORDER){const k=NPC_KIND[isle];if(k.kind!==kind)continue;
-  for(let j=0;j<(state.npcs[isle]||0);j++)if(npcSkill(isle,j)===sk)t+=k.amt;}return t;}
+  for(let j=0;j<(state.npcs[isle]||0);j++)if(npcSkill(isle,j)===sk)t+=k.amt;}return t+proBoost(kind,sk);}
 const SKILL_GOODS={woodcutting:'logs',mining:'ore',fishing:'raw fish',smithing:'jewellery',cooking:'cooked fish'};
 function boostText(isle,j){const sk=npcSkill(isle,j),S=SKILLS[sk].name,{kind,amt}=NPC_KIND[isle],pc=Math.round(amt*100)+'%';
   if(kind==='xp')return `+${pc} ${S} XP`;
@@ -587,6 +611,136 @@ function boostText(isle,j){const sk=npcSkill(isle,j),S=SKILLS[sk].name,{kind,amt
   if(kind==='double')return `${pc} chance of a double ${sk==='woodcutting'?'log':sk==='mining'?'ore':sk==='fishing'?'catch':sk==='smithing'?'piece of jewellery':'cooked fish'}`;
   if(kind==='luck')return sk==='smithing'?`${pc} chance to save your ore when smithing`:sk==='cooking'?`${pc} less likely to burn food`:`+${pc} chance to succeed each ${sk==='fishing'?'cast':'swing'}`;
   return `Hazel pays ${pc} more for ${SKILL_GOODS[sk]}`;}
+
+/* ================= RATIDLE PRO: DATA ================= */
+// RatIdle Pro is a one-time purchase in the app (the RevenueCat entitlement ratidle_pro). It adds twelve skills: six for
+// combat and six more. Their progress lives in the save like any other skill, but they can only be trained while the
+// entitlement is active. Everything they need (stations, monsters, patches, courses) stands on every isle for everyone,
+// so free players can see what Pro adds.
+const COMBAT=['attack','strength','block','health','ranged','magic'];
+const MELEE=['attack','strength','block','health'];
+const CRAFT_SKILLS=['fletching','runecrafting','alchemy'];
+const PRO_SKILLS=[...COMBAT,'alchemy','farming','agility','thieving','runecrafting','fletching'];
+Object.assign(SKILLS,{
+  attack:      {name:'Attack',      abbr:'ATK',icon:'__attack',      hat:['#a8302a','#e0e0e8']},
+  strength:    {name:'Strength',    abbr:'STR',icon:'__strength',    hat:['#2a8a3a','#f0c030']},
+  block:       {name:'Block',       abbr:'BLK',icon:'__block',       hat:['#3a5aa8','#c8ccd4']},
+  health:      {name:'Health',      abbr:'HP', icon:'__health',      hat:['#e04a5a','#ffffff']},
+  ranged:      {name:'Ranged',      abbr:'RNG',icon:'__ranged',      hat:['#4a7a2a','#8a5a2e']},
+  magic:       {name:'Magic',       abbr:'MAG',icon:'__magic',       hat:['#4a3ab0','#ffe070']},
+  alchemy:     {name:'Alchemy',     abbr:'ALC',icon:'__alchemy',     hat:['#2aa890','#e8e0ff']},
+  farming:     {name:'Farming',     abbr:'FRM',icon:'__farming',     hat:['#c8a050','#4a8a2a']},
+  agility:     {name:'Agility',     abbr:'AGI',icon:'__agility',     hat:['#3a6ab8','#f4f4f0']},
+  thieving:    {name:'Thieving',    abbr:'THV',icon:'__thieving',    hat:['#3a2a4a','#9a8aa8']},
+  runecrafting:{name:'Runecrafting',abbr:'RC', icon:'__runecrafting',hat:['#e0d8c8','#8a5ad0']},
+  fletching:   {name:'Fletching',   abbr:'FLE',icon:'__fletching',   hat:['#2a6a5a','#e8d8a8']},
+});
+SKILL_ORDER.push(...PRO_SKILLS);
+Object.assign(CYCLE,{attack:2.4,strength:2.4,block:2.4,health:2.4,ranged:2.0,magic:2.6,alchemy:2.0,farming:1.4,thieving:2.0,runecrafting:1.2,fletching:1.6});
+const proSkill=sk=>PRO_SKILLS.includes(sk);
+const locked=sk=>proSkill(sk)&&!PRO.pro;
+// Equipment for the Pro skills upgrades through the same nine tiers as the tools, as each level rises.
+const GEAR_SUFFIX={attack:' sword',strength:' gauntlets',block:' armour',health:' amulet',ranged:' shortbow',magic:' staff',
+  alchemy:' alembic',farming:' trowel',agility:' boots',thieving:' gloves',runecrafting:' talisman',fletching:' knife'};
+// Each isle's level, used for its arena, agility course and how hard its folk are to pickpocket.
+const ISLE_BASE={greenhaven:1,willowmere:15,maplecrest:30,yewmoor:45,arcane:60};
+
+// Combat: every isle has an arena with monsters of its two tiers. The style is the combat skill you train.
+const MONSTERS=[
+  {id:'slime', name:'Slime',        lvl:1, hp:5, atk:1, def:1, max:1, coins:[1,4],   col:'#6ad04a',ex:'A wobbly green slime. Mostly harmless.'},
+  {id:'crab',  name:'Shore crab',   lvl:15,hp:14,atk:14,def:16,max:3, coins:[4,12],  col:'#c8503a',ex:'It clacks its claws at you. Tougher than it looks.'},
+  {id:'goblin',name:'Bog goblin',   lvl:30,hp:26,atk:30,def:28,max:5, coins:[10,25], col:'#6a8a3a',ex:'A muddy little goblin with a pointed stick.'},
+  {id:'fox',   name:'Bandit fox',   lvl:45,hp:40,atk:46,def:44,max:8, coins:[22,50], col:'#d07a2a',ex:'A masked fox with a sack of stolen syrup.'},
+  {id:'wraith',name:'Moor wraith',  lvl:60,hp:58,atk:62,def:58,max:11,coins:[40,90], col:'#8a90a8',ex:'A cold shape in the mist. Its eyes glow.'},
+  {id:'golem', name:'Crystal golem',lvl:75,hp:85,atk:78,def:80,max:14,coins:[75,160],col:'#80e0f0',ex:'Humming crystal, held together by old magic.'},
+];
+const MONSTER_IDS=Object.fromEntries(MONSTERS.map(m=>[m.id,m]));
+const MONSTER_SPEED=2.8;
+// Runes power spells, one rune a cast. Each spell needs its Magic level and its own rune.
+const RUNE_T=[['air','Air','#dfe8f0','Air strike'],['water','Water','#3a8ae0','Water bolt'],['earth','Earth','#9a7040','Earth blast'],
+  ['fire','Fire','#f05a20','Fire wave'],['nature','Nature','#3ab040','Nature surge'],['arcane','Arcane','#c060f0','Arcane storm']];
+const runeId=t=>RUNE_T[t][0]+'_rune',arrowId=t=>ORE_T[t][0]+'_arrows',tipsId=t=>ORE_T[t][0]+'_arrowtips';
+const SPELL_XP=[5.5,7.5,9.5,11.5,13.5,16];
+// Potions buff every skill for a while. Drinking another of the same kind adds to its time, up to two hours.
+const POTIONS=[
+  {id:'haste_potion', name:'Haste potion', col:'#f0d040',min:5, fx:{speed:.08},say:'Every skill works 8% faster'},
+  {id:'wisdom_potion',name:'Wisdom potion',col:'#4a8ae0',min:10,fx:{xp:.08},say:'+8% XP in every skill'},
+  {id:'fortune_potion',name:'Fortune potion',col:'#40c060',min:10,fx:{luck:.06,thief:.06},say:'+6% success in every skill, from swings and casts to pickpockets'},
+  {id:'might_potion', name:'Might potion', col:'#e04040',min:10,fx:{acc:.1,dmg:.15},say:'+10% combat accuracy and +15% damage'},
+  {id:'shadow_potion',name:'Shadow potion',col:'#6a4a9a',min:15,fx:{thief:.1,loot:.25},say:'+10% pickpocket success and +25% stolen loot'},
+  {id:'grand_elixir', name:'Grand elixir', col:'#f0a0f0',min:20,fx:{speed:.1,xp:.12,luck:.06,thief:.06},say:'10% faster, +12% XP and +6% success in every skill'},
+];
+const POTION_MAX_MS=2*3600e3;
+// Farming: three patches on every isle. Crops grow in real time, even while the game is closed.
+const CROP_T=[['potato','Potato','#c8a060',60],['onion','Onion','#e8d0b0',120],['cabbage','Cabbage','#6ab04a',180],
+  ['tomato','Tomato','#e04a30',240],['corn','Sweetcorn','#f0d040',300],['starfruit','Starfruit','#f0e870',420]];
+const CROPS=CROP_T.map(([id,name,col,grow],t)=>({id,name,col,grow,t,lvl:LV[t],plantXp:[8,14,22,32,45,62][t],xp:[9,17,27,38,52,70][t],
+  seed:id+'_seed',price:[2,8,20,45,90,180][t],heal:[2,4,6,8,10,13][t]}));
+const FISH_HEAL=[3,6,9,12,16,20];
+// Agility: each isle's course can be built one of three ways. A built course trains Agility, and its bonus works on every
+// isle. Building takes gold and, for most courses, resources from your bank.
+const AGILITY={
+  greenhaven:[
+    {name:'Log balance',    gp:150,  items:{logs:25},          kind:'speed',amt:.05,skills:['woodcutting','fletching']},
+    {name:'Stepping stones',gp:150,  items:{copper_ore:20},    kind:'speed',amt:.05,skills:['mining','runecrafting']},
+    {name:'Hurdle run',     gp:300,  items:{},                 kind:'move', amt:.08}],
+  willowmere:[
+    {name:'Rope swing',     gp:800,  items:{willow_logs:60},   kind:'xp',   amt:.05,skills:['fishing','farming']},
+    {name:'Reed rafts',     gp:600,  items:{raw_trout:40},     kind:'speed',amt:.06,skills:['cooking','alchemy']},
+    {name:'Mud crawl',      gp:1000, items:{},                 kind:'thief',amt:.04}],
+  maplecrest:[
+    {name:'Treetop walk',   gp:2000, items:{maple_logs:80},    kind:'hp',   amt:5},
+    {name:'Climbing wall',  gp:1500, items:{silver_ore:60},    kind:'xp',   amt:.05,skills:['smithing','fletching']},
+    {name:'Monkey bars',    gp:2500, items:{},                 kind:'acc',  amt:.05}],
+  yewmoor:[
+    {name:'Misty bridges',  gp:5000, items:{yew_logs:100},     kind:'dmg',  amt:.06,skills:['ranged','magic']},
+    {name:'Cliff ledges',   gp:4000, items:{gold_ore:80},      kind:'xp',   amt:.05,skills:['mining','smithing']},
+    {name:'Night run',      gp:6000, items:{},                 kind:'loot', amt:.12}],
+  arcane:[
+    {name:'Floating platforms',gp:12000,items:{magic_logs:120},kind:'xp',   amt:.03},
+    {name:'Crystal steps',  gp:10000,items:{mithril_ore:100},  kind:'speed',amt:.03},
+    {name:'Arcane leap',    gp:15000,items:{},                 kind:'hp',   amt:10}],
+};
+const AGI_XP={greenhaven:30,willowmere:60,maplecrest:100,yewmoor:155,arcane:230};
+// The look of each course option: what stands at its four obstacles.
+const AGI_LOOK=['beam','stone','hurdle'];
+// Thieving: anyone on an isle can be pickpocketed. Hazel is the hardest and pays best; a traveller visits every isle.
+const TRAVELLERS={greenhaven:['Pip the deckhand','Fair winds! Mind your pockets on the dock.'],willowmere:['Marsh pedlar','Reeds, rope and remedies! All very reasonable.'],
+  maplecrest:['Syrup merchant','Fresh syrup, still warm from the tap.'],yewmoor:['Lantern keeper','I keep the moor lamps lit. Someone has to.'],
+  arcane:['Star pilgrim','I came for the humming trees. I stay for the quiet.']};
+const thiefLvl=e=>e.kind==='trader'?ISLE_BASE[state.island]+16:e.trav?ISLE_BASE[e.isle]:ISLE_BASE[e.isle]+8;
+
+// New items. Runes, arrows and potions are supplies; enchanted jewellery is for selling.
+ITEMS.rune_essence={name:'Rune essence',ex:'A pale, humming stone from the essence rocks in the mine. Craft it into runes at a runic altar.',icon:['essence'],value:1,kind:'raw',skill:'runecrafting'};
+ORE_T.forEach(([id,N,c],t)=>{
+  ITEMS[tipsId(t)]={name:N+' arrowtips',ex:`Sharp little ${N.toLowerCase()} arrowtips, smithed from ${N.toLowerCase()} ore. Fletch them onto logs for arrows.`,icon:['tips',c],stack:true,value:1+t,kind:'supply',skill:'fletching'};
+  ITEMS[arrowId(t)]={name:N+' arrows',ex:`${N} arrows for your shortbow. They need Ranged level ${LV[t]}.`,icon:['arrow',c],stack:true,value:2+t*2,kind:'supply',skill:'fletching'};
+  const j=id+'_'+JEWEL[t];
+  ITEMS['ench_'+j]={name:'Enchanted '+N.toLowerCase()+' '+JEWEL[t],ex:`A ${N.toLowerCase()} ${JEWEL[t]} that glows with ${RUNE_T[t][1].toLowerCase()} magic. Collectors pay a fortune for it.`,
+    icon:['jewel',JEWEL[t],c,RUNE_T[t][2]],value:TIER_VAL[t]*20,kind:'good',skill:'magic'};
+});
+RUNE_T.forEach(([id,N,c,spell],t)=>{ITEMS[runeId(t)]={name:N+' rune',ex:`A rune humming with ${N.toLowerCase()} magic. Cast ${spell} with it (Magic ${LV[t]}), or enchant ${art(ORE_T[t][1])} ${ORE_T[t][1].toLowerCase()} ${JEWEL[t]}.`,
+  icon:['rune',c],stack:true,value:[1,2,4,7,12,20][t],kind:'supply',skill:'runecrafting'};});
+POTIONS.forEach((p,t)=>{ITEMS[p.id]={name:p.name,ex:`${p.say} for ${p.min} minutes. Brewed from ${ORE_T[t][1].toLowerCase()} ore and raw ${FISH_T[t][1].toLowerCase()}.`,
+  icon:['potion',p.col],act:'Drink',potion:t,value:TIER_VAL[t]*10,kind:'supply',skill:'alchemy'};});
+CROPS.forEach(c=>{
+  ITEMS[c.id]={name:c.name,ex:`A fresh ${c.name.toLowerCase()} from your farm patch. Heals ${c.heal} health when eaten in a fight.`,icon:['crop',c.col,c.id],value:TIER_VAL[c.t]*2,kind:'raw',heal:c.heal,skill:'farming'};
+  ITEMS[c.seed]={name:c.name+' seed',ex:`Plant it in a farm patch (Farming ${c.lvl}). Grows in about ${Math.round(c.grow/60)} minute${c.grow>=120?'s':''}.`,icon:['cseed',c.col],stack:true,crop:c.t,value:Math.max(1,c.price/2),skill:'farming'};
+});
+FISH_T.forEach(([id],t)=>{ITEMS['cooked_'+id].heal=FISH_HEAL[t];});
+// Everything a Pro skill makes at a station. Smithing arrowtips is part of Fletching, so it needs Pro too.
+const CRAFTS={tips:[],fletching:[],alchemy:[],runecrafting:[],magic:[]};
+ORE_T.forEach(([id],t)=>{
+  CRAFTS.tips.push({skill:'smithing',pro:'fletching',t,lvl:LV[t],xp:[12,22,35,50,75,105][t],inputs:[[id+'_ore',1]],out:[tipsId(t),10],station:'furnace',verb:'Smith'});
+  CRAFTS.fletching.push({skill:'fletching',t,lvl:LV[t],xp:[20,35,55,80,115,160][t],inputs:[[TREES[TREE_ORDER[t]].item,1],[tipsId(t),10]],out:[arrowId(t),10],station:'fletch',verb:'Fletch'});
+  CRAFTS.alchemy.push({skill:'alchemy',t,lvl:LV[t],xp:[30,50,75,105,145,200][t],inputs:[[id+'_ore',1],['raw_'+FISH_T[t][0],1]],out:[POTIONS[t].id,1],station:'alch',verb:'Brew'});
+  CRAFTS.runecrafting.push({skill:'runecrafting',t,lvl:LV[t],xp:[6,8,10,13,16,20][t],inputs:[['rune_essence',1]],out:[runeId(t),1],station:'altar',verb:'Craft'});
+  CRAFTS.magic.push({skill:'magic',t,lvl:LV[t],xp:[35,60,90,125,170,230][t],inputs:[[id+'_'+JEWEL[t],1],[runeId(t),1]],out:['ench_'+id+'_'+JEWEL[t],1],station:null,verb:'Enchant'});
+});
+const ALL_CRAFTS=Object.values(CRAFTS).flat();
+// A rock in every mine that gives rune essence at any Mining level.
+const ESSENCE_ROCK={name:'Essence rock',ore:'Rune essence',lvl:1,xp:5,diff:1,item:'rune_essence',tier:0,color:'#d8ccff',respawn:[3,6],essence:true,
+  ex:'A pale rock that hums. Mine it for rune essence.'};
 
 /* ================= STATE / SAVE ================= */
 const RAT_NAMES=['Squeaks','Whiskers','Nibbles','Pip','Bramble','Clover','Hazelnut','Pepper','Tumble','Biscuit','Moss','Juniper'];
@@ -597,10 +751,10 @@ const SAVE_VERSION=3,LEGACY_KEY='timberline-save-v1',SLOTS=[1,2,3],MAX_IMPORT=51
 const SLOT_KEY=n=>'ratidle-save-slot-'+n;
 // Keys used before the game was renamed from Timberline; still read so old saves carry over.
 const OLD_SLOT_KEY=n=>'timberline-save-slot-'+n,OLD_LOG_KEY=n=>'timberline-log-slot-'+n;
-function freshState(){return{name:randomName(),skills:{woodcutting:0,mining:0,fishing:0,smithing:0,cooking:0},fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
-  stats:{got:{},felled:{},rares:{},made:{},burnt:0,sold:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
-  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:30,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false,bankSort:false,tutorialDone:false},pos:{x:0,z:3},island:'greenhaven',loc:'island',
-  outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},npcs:{},chutes:{},xpv:XP_CURVE,focus:null,last:Date.now()};}
+function freshState(){return{name:randomName(),skills:Object.fromEntries(SKILL_ORDER.filter(k=>k!=='construction').map(k=>[k,0])),fxp:0,gold:0,inv:Array(28).fill(null),bank:{},
+  stats:{got:{},felled:{},rares:{},made:{},kills:{},burnt:0,sold:0,stolen:0,laps:0,focusSessions:0,focusMinutes:0},pets:{},activePet:null,hats:[],prestige:{},construction:{},reading:{},
+  settings:{auto:false,xpRate:2,pixel:2,sound:true,focusMin:30,activity:'woodcutting',hideMenus:false,focusPov:'follow',hideHats:[],hideMedals:[],hideOutfitHat:false,hideName:false,hideLog:false,bankSort:false,tutorialDone:false,style:'attack',magicMode:'combat',autoEat:true,autoDrink:true},pos:{x:0,z:3},island:'greenhaven',loc:'island',
+  outfit:'medieval',outfits:['medieval'],books:['rats'],book:'rats',cabin:{level:0,wall:'tree',floor:'tree',woods:['tree'],furniture:[]},npcs:{},chutes:{},hp:null,buffs:{},farm:{},agility:{},xpv:XP_CURVE,focus:null,last:Date.now()};}
 let state=freshState();
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -623,8 +777,8 @@ function sanitize(raw,opts={}){
   if(isObj(s.stats)){const t=s.stats;
     f.stats.got=countMap(t.got,ITEMS);
     if(isObj(t.logs)){const l=countMap(t.logs,ITEMS);for(const k in l)f.stats.got[k]=(f.stats.got[k]||0)+l[k];}
-    f.stats.felled=countMap(t.felled,TREES);f.stats.rares=countMap(t.rares,ITEMS);f.stats.made=countMap(t.made,ITEMS);
-    for(const k of['burnt','sold','focusSessions','focusMinutes'])f.stats[k]=int(t[k],0,1e12,0);}
+    f.stats.felled=countMap(t.felled,TREES);f.stats.rares=countMap(t.rares,ITEMS);f.stats.made=countMap(t.made,ITEMS);f.stats.kills=countMap(t.kills,MONSTER_IDS);
+    for(const k of['burnt','sold','stolen','laps','focusSessions','focusMinutes'])f.stats[k]=int(t[k],0,1e12,0);}
   if(isObj(s.pets))for(const k of PET_ORDER)if(s.pets[k]===true)f.pets[k]=true;
   f.activePet=typeof s.activePet==='string'&&f.pets[s.activePet]?s.activePet:(s.activePet===undefined&&f.pets.beaver?'beaver':null);
   f.hats=pickList(s.hats,SKILLS,SKILL_ORDER.length);
@@ -635,6 +789,7 @@ function sanitize(raw,opts={}){
     g.focusMin=int(t.focusMin,5,120,30);g.activity=typeof t.activity==='string'&&own(SKILLS,t.activity)?t.activity:'woodcutting';
     g.focusPov=['follow','orbit','island','eyes'].includes(t.focusPov)?t.focusPov:'follow';
     g.hideHats=pickList(t.hideHats,SKILLS);g.hideMedals=pickList(t.hideMedals,SKILLS);g.hideOutfitHat=t.hideOutfitHat===true;g.hideName=t.hideName===true;g.hideLog=t.hideLog===true;g.bankSort=t.bankSort===true;
+    g.style=COMBAT.includes(t.style)?t.style:'attack';g.magicMode=t.magicMode==='enchant'?'enchant':'combat';g.autoEat=t.autoEat!==false;g.autoDrink=t.autoDrink!==false;
     // Saves from before the tutorial existed belong to players who already know the game.
     g.tutorialDone=t.tutorialDone!==false;}
   if(typeof s.island==='string'&&own(ISLANDS,s.island))f.island=s.island;
@@ -647,6 +802,11 @@ function sanitize(raw,opts={}){
   if(isObj(s.reading))for(const k of BOOK_ORDER){const v=int(s.reading[k],0,BOOKS[k].pages,0);if(v)f.reading[k]=v-(v%2);}
   if(isObj(s.construction))for(const k of ISLAND_ORDER){const v=num(s.construction[k],0,PROJECT_PTS,0);if(v)f.construction[k]=v;}
   if(isObj(s.chutes))for(const k of ISLAND_ORDER)if(s.chutes[k]===true)f.chutes[k]=true;
+  f.hp=typeof s.hp==='number'&&isFinite(s.hp)?clamp(s.hp,0,1000):null;
+  if(isObj(s.buffs)){const now=Date.now();for(const p of POTIONS){const v=num(s.buffs[p.id],0,now+POTION_MAX_MS,0);if(v>now)f.buffs[p.id]=v;}}
+  if(isObj(s.farm))for(const k of ISLAND_ORDER)if(Array.isArray(s.farm[k]))f.farm[k]=[0,1,2].map(i=>{const q=s.farm[k][i];
+    return isObj(q)&&Number.isInteger(q.t)&&q.t>=0&&q.t<CROPS.length?{t:q.t,at:num(q.at,0,Date.now(),Date.now())}:null;});
+  if(isObj(s.agility))for(const k of ISLAND_ORDER){const v=s.agility[k];if(Number.isInteger(v)&&v>=0&&v<3)f.agility[k]=v;}
   if(isObj(s.npcs))for(const k of ISLAND_ORDER){const v=int(s.npcs[k],0,5,0);if(v)f.npcs[k]=v;}
   // Huts built before villagers existed bring theirs now, unless Construction has been prestiged.
   if(!f.prestige.construction)for(const k of ISLAND_ORDER){const v=npcEarned((f.construction[k]||0)/PROJECT_PTS);if(v>(f.npcs[k]||0))f.npcs[k]=v;}
@@ -702,7 +862,7 @@ const TOOL_NAMES={
 };
 const FURNACE_LOOK=[['#a8835a','#ff7a20'],['#8a847c','#ff7a20'],['#9a5040','#ff8a30'],['#5a5a60','#ffa040'],['#4a4a52','#ffc050'],['#4a5a90','#80a0ff'],['#3a7a8a','#60e0ff'],['#6a2020','#ff4020'],['#a8d8e8','#c0ffff']];
 const toolIdx=sk=>TOOL_TIERS.indexOf(toolTier(sk));
-const toolName=sk=>TOOL_NAMES[sk]?TOOL_NAMES[sk][toolIdx(sk)]:toolTier(sk).n+(sk==='woodcutting'?' axe':sk==='mining'?' pickaxe':' hammer & saw');
+const toolName=sk=>TOOL_NAMES[sk]?TOOL_NAMES[sk][toolIdx(sk)]:toolTier(sk).n+(GEAR_SUFFIX[sk]||(sk==='woodcutting'?' axe':sk==='mining'?' pickaxe':' hammer & saw'));
 const focusing=()=>!!state.focus;
 const activity=()=>state.focus?state.focus.skill:state.settings.activity;
 
@@ -727,7 +887,8 @@ function iconURL(id){
     g.fillStyle='#000';g.fillRect(-10,-2,2,2);g.restore();g.lineWidth=1.5;g.strokeStyle='#000';};
   const pick=(x,y,rot,col)=>{g.save();g.translate(x,y);g.rotate(rot);g.fillStyle='#6b4a2b';g.fillRect(-1.5,-2,3,18);g.strokeRect(-1.5,-2,3,18);
     g.fillStyle=col;g.beginPath();g.moveTo(-11,1);g.quadraticCurveTo(0,-7,11,1);g.lineTo(9,3);g.quadraticCurveTo(0,-3,-9,3);g.closePath();g.fill();g.stroke();g.restore();};
-  if(kind==='log'){log(spec[1],spec[2]);if(spec[3]){g.fillStyle='#fff';[[6,6],[28,9],[12,26]].forEach(([x,y])=>g.fillRect(x,y,2,2));}}
+  if(proIcon(g,spec)){}
+  else if(kind==='log'){log(spec[1],spec[2]);if(spec[3]){g.fillStyle='#fff';[[6,6],[28,9],[12,26]].forEach(([x,y])=>g.fillRect(x,y,2,2));}}
   else if(kind==='skill'){const s=spec[1];
     if(s==='woodcutting'){log('#7a5230','#d8b07a');g.save();g.translate(22,12);g.rotate(.6);g.fillStyle='#6b4a2b';g.fillRect(-1.5,-2,3,16);g.strokeRect(-1.5,-2,3,16);g.fillStyle='#b8b8c0';g.beginPath();g.moveTo(-1,-4);g.lineTo(8,-6);g.lineTo(8,4);g.lineTo(-1,2);g.closePath();g.fill();g.stroke();g.restore();}
     else if(s==='mining')pick(18,14,.6,'#9aa0a8');
@@ -773,7 +934,8 @@ function iconURL(id){
       if(k==='tiara'){g.moveTo(5,24);g.quadraticCurveTo(18,14,31,24);g.lineTo(29,20);g.lineTo(24,17);g.lineTo(18,8);g.lineTo(12,17);g.lineTo(7,20);}
       else{g.moveTo(6,26);g.lineTo(30,26);g.lineTo(31,10);g.lineTo(25,17);g.lineTo(18,6);g.lineTo(11,17);g.lineTo(5,10);}
       g.closePath();g.fill();g.stroke();g.fillStyle=gem;g.beginPath();g.arc(18,k==='tiara'?14:20,2.8,0,Math.PI*2);g.fill();g.stroke();}
-    g.fillStyle='rgba(255,255,255,.6)';g.fillRect(12,13,2,2);}
+    g.fillStyle='rgba(255,255,255,.6)';g.fillRect(12,13,2,2);
+    if(spec[3]){g.fillStyle=spec[3];[[5,5],[29,7],[30,27],[6,26],[18,2]].forEach(([x,y])=>{g.fillRect(x-1,y-3,2,6);g.fillRect(x-3,y-1,6,2);});}}
   return iconCache[id]=c.toDataURL();
 }
 
@@ -964,8 +1126,8 @@ function buildTrader(){
 const NPC_FUR=['#8e8378','#5a4a3e','#d8d0c4','#a87a50','#3a3634','#c8b090','#9a8a8a'];
 const NPC_SHIRT={woodcutting:'#4a7a3a',mining:'#6a6a7a',fishing:'#2a6ab0',smithing:'#4a3a3a',cooking:'#ece8de'};
 // The same rat as the player, simpler, in a different coat, outfit and hat for its isle and its skill.
-function buildRatNpc(isle,j){
-  const sk=npcSkill(isle,j),i=ISLAND_ORDER.indexOf(isle),fur=NPC_FUR[(i*2+j)%NPC_FUR.length],fur2=shade(fur,.12),pink='#e8a0a8',shirt=NPC_SHIRT[sk];
+function buildRatNpc(isle,j,role){
+  const sk=role||npcSkill(isle,j),i=ISLAND_ORDER.indexOf(isle),fur=NPC_FUR[(i*2+j)%NPC_FUR.length],fur2=shade(fur,.12),pink='#e8a0a8',shirt=NPC_SHIRT[sk]||'#7a4a6a';
   const pal=ISLANDS[isle].pal,pants=shade(pal.dirt,-.04),g=new THREE.Group(),body=new THREE.Group();g.add(body);
   const add=(geo,c,x,y,z,to=body)=>{const m=mesh(geo,c,x,y,z);to.add(m);return m;};
   const legs=[-1,1].map(sx=>{const L=new THREE.Group();L.position.set(sx*.15,.9,0);add(new THREE.BoxGeometry(.24,.62,.26),pants,0,-.3,0,L);add(new THREE.BoxGeometry(.22,.1,.3),'#3a2a1a',0,-.85,.03,L);body.add(L);return L;});
@@ -984,6 +1146,7 @@ function buildRatNpc(isle,j){
   else if(sk==='mining'){add(new THREE.SphereGeometry(.25,8,4,0,Math.PI*2,0,Math.PI/2),'#f0c020',0,.2,0,head);add(new THREE.CylinderGeometry(.3,.3,.03,10),'#f0c020',0,.2,.04,head);add(new THREE.BoxGeometry(.1,.08,.04),'#fff6c0',0,.3,.24,head);}
   else if(sk==='fishing'){add(new THREE.CylinderGeometry(.24,.3,.2,8),'#c8b07a',0,.3,0,head);add(new THREE.CylinderGeometry(.38,.38,.03,10),'#b89a60',0,.21,0,head);}
   else if(sk==='smithing')add(new THREE.BoxGeometry(.47,.08,.45),'#c0392b',0,.12,0,head);
+  else if(sk==='trav'){add(new THREE.BoxGeometry(.47,.1,.45),'#2a5a9a',0,.16,0,head);add(new THREE.BoxGeometry(.36,.42,.16),'#6a4a2a',0,1.32,-.3);}
   else{add(new THREE.CylinderGeometry(.2,.2,.22,8),'#ffffff',0,.32,0,head);add(new THREE.IcosahedronGeometry(.25,0),'#ffffff',0,.5,0,head);}
   return{g,head,legs};
 }
@@ -991,6 +1154,7 @@ let npcs=[];
 // Somewhere to stand by the thing a villager's skill works with: a tree, a rock, the shore by the fish, the furnace or the fire.
 // It stands on the island side of it, clear of anything solid, and looks at it.
 function npcTarget(e){
+  if(e.trav)return travTarget(e);
   const sk=npcSkill(e.isle,e.j),pickOne=a=>a.length?a[randi(0,a.length-1)]:null;
   const near=(o,r)=>{const a=Math.atan2(-o.z,-o.x)+rand(-1.1,1.1);return{x:o.x+Math.cos(a)*r,z:o.z+Math.sin(a)*r,lx:o.x,lz:o.z};};
   for(let k=0;k<10;k++){let t=null;
@@ -1021,6 +1185,7 @@ function spawnNpcs(fresh){
     const t=npcTarget(e);e.x=t.x;e.z=t.z;e.t=t;e.face=Math.atan2(t.lx-t.x,t.lz-t.z);
     m.g.position.set(e.x,npcY(e),e.z);m.g.rotation.y=e.face;npcs.push(e);
     if(fresh&&j===cnt-1)puff(e.x,npcY(e)+1,e.z,'#fff0b0');}
+  spawnTraveller();
 }
 // Head for the ladder (or the mine entrance), and switch sides on arrival.
 function npcShift(e){const d=mineDir();if(e.under){npcPlace(e,false);const p=mineDoor();e.x=p.x;e.z=p.z;}else{npcPlace(e,true);e.x=CAVE_EXIT.x+d.x*1.4;e.z=CAVE_EXIT.z+d.z*1.4;}
@@ -1040,6 +1205,7 @@ function updateNpcs(dt,T){for(const e of npcs){
   e.g.position.set(e.x,npcY(e),e.z);e.g.rotation.y=e.face;e.head.rotation.x=Math.sin(T*1.3+e.j)*.06;
   e.g.children[0].position.y=walking?Math.abs(Math.cos(e.walkT))*.05:Math.abs(Math.sin(T*1.1+e.j))*.02;}}
 function talkNpc(e){
+  if(e.trav){talkTraveller(e);return;}
   const S=SKILLS[npcSkill(e.isle,e.j)].name,tip=boostText(e.isle,e.j);
   const lines=[e.line,`I'm a ${S.toLowerCase()} rat, through and through. And now that the ${ISLANDS[e.isle].name} hut is up, I've got somewhere to live!`,
     `Since I moved in: ${tip}. That works on every isle, so come and visit whenever you like.`];
@@ -1242,7 +1408,7 @@ class TreeEnt{
   }
 }
 class RockEnt{
-  constructor(t,x,z){this.kind='rock';this.skill='mining';this.def=ROCKS[t];this.x=x;this.z=z;this.y=0;this.cr=.7;this.r=.7;
+  constructor(t,x,z){this.kind='rock';this.skill='mining';this.def=typeof t==='object'?t:ROCKS[t];this.x=x;this.z=z;this.y=0;this.cr=.7;this.r=.7;
     this.state='full';this.timer=0;this.shake=0;this.group=new THREE.Group();this.group.position.set(x,this.y,z);this.group.rotation.y=rand(0,6.28);cavePick.add(this.group);this.build();rocks.push(this);}
   get name(){return this.state==='full'?this.def.name:'Rocks';}
   get reach(){return this.cr+.6;}
@@ -1305,6 +1471,7 @@ const gatherEnts=()=>trees.concat(rocks,spots);
 function clearAt(x,z,minD,ignore){
   for(const t of trees)if(t!==ignore&&Math.hypot(t.x-x,t.z-z)<minD+t.cr)return false;
   for(const o of obstacles)if(Math.hypot(o.x-x,o.z-z)<o.r+1.4)return false;
+  for(const o of NO_SPAWN)if(Math.hypot(o.x-x,o.z-z)<o.r)return false;
   if(Math.abs(x)<1.6&&z>30)return false;
   return true;
 }
@@ -1331,7 +1498,7 @@ function updateParts(dt){for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.l
   if(p.life<=0){scene.remove(p.m);p.m.material.dispose();parts.splice(i,1);}}}
 
 /* ================= CHARACTER ================= */
-const player={x:0,z:3,y:0,face:0,faceT:0,action:null,anim:'idle',walkT:0,idle:0,stuck:0,resting:false};
+const player={x:0,z:3,y:0,face:0,faceT:0,action:null,anim:'idle',walkT:0,idle:0,stuck:0,resting:false,hop:0};
 // The player is a rat, built to the same size and rig as the old human so every animation still fits.
 const P=(()=>{
   const g=new THREE.Group();const fur='#8e8378',fur2='#b3a89c',pink='#e8a0a8';
@@ -1387,15 +1554,28 @@ const P=(()=>{
   scene.add(g);return{g,legL,legR,armL,armR,body,head,axeHead,pickHead,parts,hat,book,tail,tailSegs,skirt,tools:{woodcutting:axe,mining:pick,smithing:hammer,fishing:rod,cooking:pan,construction:build},rodStick,panHead,buildHead,flip};
 })();
 P.medals=new THREE.Group();P.body.add(P.medals);
+// RatIdle Pro gear: a sword (with a shield on the other arm) for melee, a shortbow and a staff.
+{const mk=()=>{const t=new THREE.Group();t.position.set(0,-.68,0);P.armR.add(t);t.visible=false;return t;};
+  const sword=mk();sword.add(mesh(new THREE.BoxGeometry(.06,.06,.22),'#6b4a2b',0,0,.08),mesh(new THREE.BoxGeometry(.28,.06,.06),'#c8a040',0,0,.2));
+  P.blade=mesh(new THREE.BoxGeometry(.04,.1,.78),'#c8ccd4',0,0,.6);sword.add(P.blade);
+  const bow=mk();P.bowWood=[[0,0,0],[.3,.1,-.55],[-.3,.1,.55]].map(([z,y,rx])=>{const m=mesh(new THREE.BoxGeometry(.05,.05,.36),'#8a5a2e',0,y,z);m.rotation.x=rx;bow.add(m);return m;});
+  bow.add(basic(new THREE.BoxGeometry(.01,.01,.84),0xf0f0e0,0,.2,0));
+  const staff=mk();staff.add(mesh(new THREE.BoxGeometry(.05,.05,1.5),'#5a3e22',0,0,.35));P.orb=mesh(new THREE.IcosahedronGeometry(.11,0),'#c060f0',0,0,1.12,{emissive:0x302040});staff.add(P.orb);
+  P.shield=new THREE.Group();P.shieldFace=mesh(new THREE.BoxGeometry(.06,.44,.38),'#8a8a8a',0,0,0);P.shield.add(P.shieldFace,mesh(new THREE.BoxGeometry(.07,.1,.1),'#c8a040',0,0,0));
+  P.shield.position.set(-.13,-.42,.05);P.shield.visible=false;P.armL.add(P.shield);
+  Object.assign(P.tools,{sword,bow,staff});}
+const TOOL_KEY={attack:'sword',strength:'sword',block:'sword',health:'sword',ranged:'bow',magic:'staff'};
 function refreshTools(){
   P.axeHead.material=M(toolTier('woodcutting').c);P.pickHead.material=M(toolTier('mining').c);
   P.rodStick.material=M(toolIdx('fishing')<2?'#8a6a3a':toolTier('fishing').c);P.panHead.material=M(toolTier('cooking').c);P.buildHead.material=M(toolTier('construction').c);
+  P.blade.material=M(toolTier('attack').c);P.shieldFace.material=M(toolTier('block').c);for(const m of P.bowWood)m.material=M(toolIdx('ranged')<2?'#8a5a2e':toolTier('ranged').c);
+  const sp=bestSpell();P.orb.material=M(sp<0?'#8a8aa0':RUNE_T[sp][2],{emissive:0x302040});
 }
 function rebuildFurnace(){
   pickRoot.children.filter(g=>{let hit=false;g.traverse(o=>{if(o.userData.ent===FURNACE)hit=true;});return hit;}).forEach(g=>{pickRoot.remove(g);disposeGroup(g);});
   if(!inCabin()||true)buildFurnace();
 }
-function showTool(sk){for(const k in P.tools)P.tools[k].visible=!player.resting&&k===sk;P.book.visible=player.resting;}
+function showTool(sk){const t=TOOL_KEY[sk]||sk;for(const k in P.tools)P.tools[k].visible=!player.resting&&k===t;P.shield.visible=!player.resting&&t==='sword';P.book.visible=player.resting;}
 function applyOutfit(){
   const o=OUTFITS[state.outfit]||OUTFITS.lumberjack;
   for(const k of['shirt','stripe','pants','boot'])for(const m of P.parts[k])m.material=M(o[k]);
@@ -1418,7 +1598,7 @@ function applyOutfit(){
   disposeGroup(P.medals);
   const shown=SKILL_ORDER.filter(sk=>state.prestige[sk]&&!cos.hideMedals.includes(sk));
   shown.forEach((sk,i)=>{const t=state.prestige[sk],d=MEDALS[t-1],glow=d.glow?{emissive:d.glow}:undefined,m=new THREE.Group();
-    m.position.set((i-(shown.length-1)/2)*.12,1.24,.225);m.scale.setScalar(.85+t*.03);
+    m.position.set((i-(shown.length-1)/2)*Math.min(.12,.62/shown.length),1.24,.225);m.scale.setScalar(.85+t*.03);
     const disc=mesh(new THREE.CylinderGeometry(.045,.045,.02,10),d.c,0,0,.005,glow);disc.rotation.x=Math.PI/2;
     m.add(mesh(new THREE.BoxGeometry(.06,.08,.012),SKILLS[sk].hat[0],0,.065,0),disc);
     if(d.gem)m.add(mesh(new THREE.OctahedronGeometry(.022,0),d.gem,0,0,.022,glow));
@@ -1498,10 +1678,16 @@ function animatePlayer(dt,T){
   else if(player.resting){lL=lR=-1.45;aL=aR=-1.05;azL=.28;azR=-.28;headX=.38;drop=.9-(sp.h??.45);lean=-.05;
     P.book.rotation.z=Math.sin(T*.7)*.06;}
   else if(a==='walk'){player.walkT+=dt*9.5;const s=Math.sin(player.walkT);lL=s*.7;lR=-s*.7;aL=-s*.55;aR=s*.55;bob=Math.abs(Math.cos(player.walkT))*.07;}
-  else if(a==='woodcutting'||a==='mining'||a==='smithing'||a==='construction'){const ac=player.action;const p=ac?(ac.timer/(ac.cyc||CYCLE[a])):0;const r=swingAngle(p);
-    aR=r;aL=a==='smithing'||a==='construction'?-.7:r*.85;lean=p>.55&&p<.8?.12:0;lL=.15;lR=-.1;snapArms=true;azL=.25;azR=-.15;}
+  else if(a==='woodcutting'||a==='mining'||a==='smithing'||a==='construction'||MELEE.includes(a)){const ac=player.action;const p=ac?(ac.timer/(ac.cyc||CYCLE[a])):0;const r=swingAngle(p);
+    aR=r;aL=a==='smithing'||a==='construction'?-.7:MELEE.includes(a)?-.9:r*.85;lean=p>.55&&p<.8?.12:0;lL=.15;lR=-.1;snapArms=true;azL=.25;azR=-.15;}
   else if(a==='fishing'){aR=-1.15+Math.sin(T*2)*.05;aL=-1.0;azL=.3;azR=-.1;lL=.1;lR=-.1;}
   else if(a==='cooking'){aR=aL=-1.2+Math.sin(T*3)*.08;azL=.25;azR=-.25;lean=.15;}
+  else if(a==='ranged'){aL=-1.5;aR=-1.35+Math.sin(T*3)*.03;azL=.12;azR=-.3;}
+  else if(a==='magic'){const ac=player.action,p=ac&&ac.cyc?ac.timer/ac.cyc:0;aR=-1.5-Math.sin(clamp(p,0,1)*Math.PI)*.9;aL=-.5;azR=-.1;}
+  else if(a==='alchemy'||a==='fletching'||a==='runecrafting'){aR=aL=-1.05+Math.sin(T*(a==='runecrafting'?2:4))*.12;azL=.25;azR=-.25;lean=.12;}
+  else if(a==='farming'){lL=lR=-.7;lean=.5;aR=aL=-.9+Math.sin(T*5)*.25;drop=.22;}
+  else if(a==='thieving'){aR=-1.25+Math.sin(T*7)*.12;aL=-.2;lean=.18;}
+  else if(a==='balance'){player.walkT+=dt*7;const s=Math.sin(player.walkT);lL=s*.4;lR=-s*.4;azL=1.35;azR=-1.35;bob=Math.abs(Math.cos(player.walkT))*.04;}
   else{aL=Math.sin(T*1.6)*.04;aR=-aL;}
   P.legL.rotation.x=lerp(P.legL.rotation.x,lL,k);P.legR.rotation.x=lerp(P.legR.rotation.x,lR,k);
   if(snapArms){P.armR.rotation.x=aR;P.armL.rotation.x=aL;}else{P.armL.rotation.x=lerp(P.armL.rotation.x,aL,k);P.armR.rotation.x=lerp(P.armR.rotation.x,aR,k);}
@@ -1661,6 +1847,7 @@ function buildCave(){
     l.position.set(x,0,z);l.rotation.y=rand(0,6.28);caveRoot.add(l);caveObstacles.push({x,z,r:.3});};
   lantern(CAVE_SEAT.x+.9,CAVE_SEAT.z-.6,true);
   for(const t of I.tiers)for(let i=0;i<(t===I.tiers[0]?5:3);i++){const q=caveSpot(8,34,2.2);if(q)new RockEnt(t,q.x,q.z);}
+  for(let i=0;i<2;i++){const q=caveSpot(8,30,2.2);if(q)new RockEnt(ESSENCE_ROCK,q.x,q.z);}
   // A lantern beside every few rocks, so the ore is easy to find.
   rocks.forEach((r,i)=>{if(i%2)return;const a=rand(0,6.28),x=r.x+Math.cos(a)*1.6,z=r.z+Math.sin(a)*1.6;if(Math.hypot(x,z)<CAVE_R-1)lantern(x,z,i%4===0&&caveLights.length<4);});
   const top=ORE_T[I.tiers[I.tiers.length-1]][2];
@@ -1848,7 +2035,7 @@ const needLv=(sk,lv)=>level(sk)>=lv?'':` You need ${SKILLS[sk].name} level ${lv}
 function itemEx(id){const d=ITEMS[id],r=RECIPES.smithing.concat(RECIPES.cooking).find(x=>x.input===id);
   return esc(d.ex+(r?needLv(r.skill,r.lvl):''))+(d.value?` <i>(Hazel pays ${itemPrice(id)} gp each.)</i>`:'');}
 // Which skill an item comes from, for the bank's groups and for villagers who raise its price.
-const itemSkill=id=>id.endsWith('_logs')||id==='logs'?'woodcutting':id.endsWith('_ore')?'mining':id.startsWith('raw_')?'fishing':id.startsWith('cooked_')?'cooking':ITEMS[id].kind==='good'?'smithing':null;
+const itemSkill=id=>ITEMS[id].skill||(id.endsWith('_logs')||id==='logs'?'woodcutting':id.endsWith('_ore')?'mining':id.startsWith('raw_')?'fishing':id.startsWith('cooked_')?'cooking':ITEMS[id].kind==='good'?'smithing':null);
 const itemPrice=id=>{const sk=itemSkill(id);return Math.round(ITEMS[id].value*(1+(sk?boost('sell',sk):0)));};
 function itemOpts(i){
   const s=state.inv[i];if(!s)return[];const d=ITEMS[s.id];const t=d.name,tc='c-item';const o=[];
@@ -1856,6 +2043,9 @@ function itemOpts(i){
   if(d.act==='Read')o.push({a:'Read',t,tc,fn:()=>msg('The scroll reads: '+esc(CLUES[i%CLUES.length]),'m-blue')});
   if(d.act==='Admire')o.push({a:'Admire',t,tc,fn:()=>msg('You turn the golden acorn over in your hands. It catches the light beautifully.')});
   if(d.plant)o.push({a:'Plant',t,tc,fn:()=>plantSeed(i)});
+  if(d.potion!=null)o.push({a:'Drink',t,tc,fn:()=>drinkPotion(s.id)});
+  if(d.heal&&PRO.pro)o.push({a:'Eat',t,tc,fn:()=>eatItem(s.id)});
+  const en=CRAFTS.magic.find(r=>r.inputs[0][0]===s.id);if(en&&PRO.pro)o.push({a:'Enchant',t,tc,fn:()=>startCraft(en)});
   o.push({a:'Drop',t,tc,fn:()=>dropSlot(i)});
   if(state.inv.filter(x=>x&&x.id===s.id).length>1)o.push({a:'Drop-all',t,tc,fn:()=>dropAll(s.id)});
   o.push({a:'Examine',t,tc,fn:()=>msg(itemEx(s.id))});
@@ -1890,7 +2080,9 @@ function depositAll(via){
 }
 function nearChest(){return onIsle()&&Math.hypot(player.x-CHEST.x,player.z-CHEST.z)<CHEST.reach+1.2;}
 const BANK_GROUPS=[['Coins',id=>id==='coins'],['Logs',id=>itemSkill(id)==='woodcutting'],['Ore',id=>itemSkill(id)==='mining'],['Jewellery',id=>itemSkill(id)==='smithing'],
-  ['Raw fish',id=>itemSkill(id)==='fishing'],['Cooked fish',id=>itemSkill(id)==='cooking'],['Seeds',id=>!!ITEMS[id].plant],['Treasures',()=>true]];
+  ['Raw fish',id=>itemSkill(id)==='fishing'],['Cooked fish',id=>itemSkill(id)==='cooking'],['Ammo',id=>itemSkill(id)==='fletching'],['Runes',id=>itemSkill(id)==='runecrafting'],
+  ['Potions',id=>itemSkill(id)==='alchemy'],['Enchanted',id=>itemSkill(id)==='magic'],['Crops',id=>itemSkill(id)==='farming'&&!ITEMS[id].stack],
+  ['Seeds',id=>!!ITEMS[id].plant||ITEMS[id].crop!=null],['Treasures',()=>true]];
 function renderBank(){
   const ids=Object.keys(ITEMS).filter(id=>bankQty(id)>0),sorted=state.settings.bankSort;
   const cell=id=>`<div class="slot" data-b="${id}" data-tip="${esc(ITEMS[id].name)} ×${bankQty(id).toLocaleString()}"><img alt="${esc(ITEMS[id].name)}" src="${iconURL(id)}"><span class="qty">${short(bankQty(id))}</span></div>`;
@@ -1913,7 +2105,7 @@ document.addEventListener('pointerdown',()=>{tipEl.hidden=true;},{capture:true})
 function bankOpts(id){
   const t=ITEMS[id].name,tc='c-item';
   return[{a:'Withdraw-1',t,tc,fn:()=>withdraw(id,1)},...(id==='coins'?[{a:'Withdraw-100',t,tc,fn:()=>withdraw(id,100)},{a:'Withdraw-1,000',t,tc,fn:()=>withdraw(id,1000)}]:[]),
-    {a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},{a:'Examine',t,tc,fn:()=>msg(itemEx(id))}];
+    {a:'Withdraw-All',t,tc,fn:()=>withdraw(id,1e9)},...(ITEMS[id].potion!=null?[{a:'Drink',t,tc,fn:()=>drinkPotion(id)}]:[]),{a:'Examine',t,tc,fn:()=>msg(itemEx(id))}];
 }
 function withdraw(id,n){
   if(!nearChest()){msg('You need to be at the bank chest to withdraw items.');return;}
@@ -1928,9 +2120,11 @@ const logsOwned=w=>countOwned(TREES[w].item);
 /* ================= TAB RENDERERS ================= */
 function updateHud(){
   const sk=activity();$('#hud-sk').textContent=SKILLS[sk].abbr;$('#xplvl').textContent=level(sk);$('#chlvl').textContent=charLevel();$('#gptot').textContent=gpTotal().toLocaleString()+' gp';
+  const hp=$('#hud-hp');if(PRO.pro&&state.hp!=null){const b=activeBuffs().length;hp.hidden=false;hp.innerHTML=` · <span style="color:#ff8080">♥${Math.ceil(state.hp)}/${maxHp()}</span>${b?` <span style="color:#80ffd0">⚗${b}</span>`:''}`;}else hp.hidden=true;
 }
 let skillView='woodcutting';
 function resourceRows(sk){
+  if(proSkill(sk))return proRows(sk);
   if(sk==='construction')return `<table class="trees">${ISLAND_ORDER.map(k=>{const f=buildFrac(k);return `<tr class="${f>0?'':'lock'}"><td class="n">${esc(ISLANDS[k].name)}</td><td class="r">${f>=1?'Finished':Math.floor(f*100)+'%'}</td></tr>`;}).join('')}</table>`;
   const L=level(sk);let rows=[];
   if(sk==='woodcutting')rows=TREE_ORDER.map(k=>[TREES[k].name,TREES[k].lvl,state.stats.got[TREES[k].item]||0,'logs']);
@@ -1943,7 +2137,8 @@ function renderSkill(){
   const C=charLevel(),cc=charXpFor(C),cn=charXpFor(C+1),cpct=(state.fxp-cc)/(cn-cc)*100;
   const total=SKILL_ORDER.reduce((a,s)=>a+level(s),0);
   const rows=SKILL_ORDER.map(sk=>{const L=level(sk),xp=state.skills[sk],cur=XP_TABLE[L-1],next=L<99?XP_TABLE[L]:xp,pct=sk==='construction'?buildAvg()*100:L<99?(xp-cur)/(next-cur)*100:100;
-    return `<button class="skrow ${skillView===sk?'sel':''}" data-sk="${sk}"><img alt="" src="${iconURL(SKILLS[sk].icon)}"><div class="meta"><div class="nm"><span>${SKILLS[sk].name}${state.prestige[sk]?` <span style="color:${MEDALS[state.prestige[sk]-1].c}" title="${MEDALS[state.prestige[sk]-1].name} medal">★</span>`:''}</span><b>${L}</b></div><div class="bar thin"><i style="width:${pct.toFixed(1)}%"></i></div></div></button>`;}).join('');
+    return (sk==='attack'?'<p class="bgrp">Combat · RatIdle Pro</p>':sk==='alchemy'?'<p class="bgrp">More skills · RatIdle Pro</p>':'')+
+      `<button class="skrow ${skillView===sk?'sel':''}${locked(sk)?' lock':''}" data-sk="${sk}"><img alt="" src="${iconURL(SKILLS[sk].icon)}"><div class="meta"><div class="nm"><span>${SKILLS[sk].name}${locked(sk)?' 🔒':''}${state.prestige[sk]?` <span style="color:${MEDALS[state.prestige[sk]-1].c}" title="${MEDALS[state.prestige[sk]-1].name} medal">★</span>`:''}</span><b>${L}</b></div><div class="bar thin"><i style="width:${pct.toFixed(1)}%"></i></div></div></button>`;}).join('');
   const sv=skillView,L=level(sv),xp=state.skills[sv],pr=state.prestige[sv]||0;
   const dep=sv==='smithing'?'Uses ore from Mining. ':sv==='cooking'?'Uses raw fish from Fishing. ':sv==='construction'?'Uses logs from Woodcutting. ':'';
   const spd=toolName(sv);
@@ -1962,9 +2157,11 @@ function renderSkill(){
   <div class="row"><span>${L<99?'Next level at':'Max level'}</span><span class="v">${L<99?XP_TABLE[L].toLocaleString():'—'}</span></div>`}
   <div class="row"><span>Prestige</span><span class="v">${pr} / ${MAX_PRESTIGE}${pr?` · ${MEDALS[pr-1].name}`:''}</span></div>
   ${L>=99&&pr<MAX_PRESTIGE?`<button class="btn" id="sk-prestige" ${focusing()?'disabled':''}>Prestige to level 1 for ${an(MEDALS[pr].name)} medal</button>`:''}
-  <div class="row"><span>${sv==='smithing'?'Furnace':sv==='cooking'?'Cookware':'Tool'}</span><span class="v">${spd}</span></div>
-  <p class="hint" style="text-align:left">${sv==='construction'?"Build each isle's hut with logs from that isle's trees. Chops its own logs when you run out. Every 20% of a hut brings a villager who helps one of your skills. Your level follows overall progress and only reaches 99 when every hut is finished. Prestiging tears the huts down to build again; your villagers stay, but no new ones move in.":`${dep}${sv==='smithing'?'Smith at the furnace. ':sv==='cooking'?'Cook in the kitchen in your cabin on Greenhaven. ':''}Better equipment works lower-tier resources faster. Reach 99 to earn this skill's hat, then prestige back to level 1 for a medal, up to ${MAX_PRESTIGE} times.`}</p>
+  <div class="row"><span>${sv==='smithing'?'Furnace':sv==='cooking'?'Cookware':proSkill(sv)?'Equipment':'Tool'}</span><span class="v">${spd}</span></div>
+  <p class="hint" style="text-align:left">${proSkill(sv)?`${PRO_HINT[sv]} Equipment improves as your level rises. Reach 99 for this skill's hat, then prestige for medals.`:sv==='construction'?"Build each isle's hut with logs from that isle's trees. Chops its own logs when you run out. Every 20% of a hut brings a villager who helps one of your skills. Your level follows overall progress and only reaches 99 when every hut is finished. Prestiging tears the huts down to build again; your villagers stay, but no new ones move in.":`${dep}${sv==='smithing'?'Smith at the furnace. ':sv==='cooking'?'Cook in the kitchen in your cabin on Greenhaven. ':''}Better equipment works lower-tier resources faster. Reach 99 to earn this skill's hat, then prestige back to level 1 for a medal, up to ${MAX_PRESTIGE} times.`}</p>
+  ${locked(sv)?'<button class="btn go" id="sk-pro">Unlock with RatIdle Pro</button>':''}
   ${resourceRows(sv)}`;
+  const spb=$('#sk-pro');if(spb)spb.onclick=()=>proPrompt(SKILLS[sv].name);
   $('#tab-skill').querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{skillView=b.dataset.sk;renderSkill();});
   const pb=$('#sk-prestige');let armed=false;
   if(pb)pb.onclick=()=>{if(!armed){armed=true;pb.textContent=`Click again: ${SKILLS[sv].name} goes back to level 1`;setTimeout(()=>{armed=false;if(pb.isConnected)pb.textContent=`Prestige to level 1 for ${an(MEDALS[pr].name)} medal`;},3000);return;}prestige(sv);};
@@ -1999,6 +2196,12 @@ function renderOpts(){
   ${state.hats.length||SKILL_ORDER.some(k=>state.prestige[k])?'':'<p class="hint">Reach 99 in a skill to earn its hat, then prestige it for medals.</p>'}
   <p class="hint">${IS_TOUCH?'Tap: walk / act · Long-press: options<br>Drag: turn camera · Pinch: zoom':'Left-click: walk / act · Right-click: options<br>Drag, middle-drag or arrow keys: rotate<br>Scroll or +/−: zoom · Shift-click item: drop'}</p>
   <button class="btn" id="o-tut">Replay tutorial</button>
+  <p class="sect">RatIdle Pro</p>
+  <p class="hint">${PRO.available||PRO.pro?proStatus():'Twelve more skills are part of RatIdle Pro, a one-time purchase in the RatIdle app for iPhone and iPad.'}</p>
+  ${PRO.pro?`<label class="opt" for="o-eat"><span>Eat food when hurt</span><input type="checkbox" id="o-eat" ${s.autoEat?'checked':''}></label>
+  <label class="opt" for="o-drink"><span>AUTO drinks potions</span><input type="checkbox" id="o-drink" ${s.autoDrink?'checked':''}></label>`:''}
+  ${PRO.available?`${PRO.pro?'<button class="btn" id="o-pro-manage">Purchase help</button>':'<button class="btn go" id="o-pro">Unlock RatIdle Pro</button>'}
+  <button class="btn" id="o-pro-restore">Restore purchases</button>`:''}
   <p class="sect">Save · slot ${slot||'—'}</p>
   <button class="btn" id="o-export">Export save (JSON)</button>
   <button class="btn" id="o-import">Import save into this slot</button>
@@ -2022,11 +2225,15 @@ function renderOpts(){
   $('#o-import').onclick=()=>openImport(slot);
   $('#o-slots').onclick=()=>showTitle();
   const oc=$('#o-cloud');if(oc)oc.onclick=()=>openCloud();
+  const oe=$('#o-eat');if(oe)oe.onchange=e=>{s.autoEat=e.target.checked;save();};
+  const od=$('#o-drink');if(od)od.onchange=e=>{s.autoDrink=e.target.checked;save();};
+  for(const [id,action] of [['#o-pro','paywall'],['#o-pro-manage','manage'],['#o-pro-restore','restore']]){
+    const b=$(id);if(b)b.onclick=()=>native({type:'pro',action});}
   const rb=$('#o-reset');let armed=false;
   rb.onclick=()=>{if(!armed){armed=true;rb.textContent='Click again to delete this save for good';setTimeout(()=>{armed=false;rb.textContent='Delete this save';},3000);return;}
     native({type:'focusEnd',completed:false});deleteSlot(slot);slot=null;showTitle();};
 }
-function skillChips(sel,disabled){return `<div class="skchips">${SKILL_ORDER.map(sk=>`<button class="skchip ${sk===sel?'on':''}" data-act="${sk}" ${disabled?'disabled':''} title="${SKILLS[sk].name}"><img alt="" src="${iconURL(SKILLS[sk].icon)}">${SKILLS[sk].abbr}</button>`).join('')}</div>`;}
+function skillChips(sel,disabled){return `<div class="skchips">${SKILL_ORDER.map(sk=>`<button class="skchip ${sk===sel?'on':''}${locked(sk)?' lock':''}" data-act="${sk}" ${disabled?'disabled':''} title="${SKILLS[sk].name}"><img alt="" src="${iconURL(SKILLS[sk].icon)}">${SKILLS[sk].abbr}</button>`).join('')}</div>`;}
 function renderFocus(){
   const el=$('#tab-focus');const C=charLevel();
   if(focusing()){
@@ -2053,7 +2260,8 @@ function renderFocus(){
 function focusSetupHtml(){
   const m=state.settings.focusMin,sk=state.settings.activity;
   return `<p class="sect" style="margin-top:0">Skill${state.settings.auto?' <span class="ok">· AUTO plays this</span>':''}</p>${skillChips(sk,false)}
-  <p class="hint" style="margin-top:2px">${isProc(sk)?`${SKILLS[sk].name} also ${sk==='smithing'?'mines its own ore':sk==='construction'?'chops its own logs':'catches its own fish'} when you run out.${sk==='cooking'?' It cooks in the kitchen in your cabin on Greenhaven.':''} Pays 25% more gold.`:`Gathers, banks and repeats.`}</p>
+  <p class="hint" style="margin-top:2px">${proSkill(sk)?focusHint(sk):isProc(sk)?`${SKILLS[sk].name} also ${sk==='smithing'?'mines its own ore':sk==='construction'?'chops its own logs':'catches its own fish'} when you run out.${sk==='cooking'?' It cooks in the kitchen in your cabin on Greenhaven.':''} Pays 25% more gold.`:`Gathers, banks and repeats.`}</p>
+  ${sk==='magic'?`<div class="chips"><button class="chip ${state.settings.magicMode!=='enchant'?'on':''}" data-mm="combat">Fight with spells</button><button class="chip ${state.settings.magicMode==='enchant'?'on':''}" data-mm="enchant">Enchant jewellery</button></div>`:''}
   <div class="big" data-fm="val">${m}<span style="font-size:16px"> min</span></div>
   <input type="range" data-fm="range" min="5" max="120" step="5" value="${m}" aria-label="Focus minutes">
   <div class="chips">${[15,30,45,60,90].map(v=>`<button class="chip ${v===m?'on':''}" data-m="${v}">${v}</button>`).join('')}</div>
@@ -2063,11 +2271,12 @@ function bindFocusSetup(el,redraw){
   const q=k=>el.querySelector(`[data-fm="${k}"]`);
   const rew=()=>{const v=state.settings.focusMin,s=state.settings.activity;q('rew').innerHTML=`<span><b>+${focusXpFor(v)}</b> character XP</span><span class="g">+${focusGoldFor(v,s)} gp</span><span>${focusSkillHtml(v,s)}</span>`;};
   const set=v=>{state.settings.focusMin=v;q('val').innerHTML=`${v}<span style="font-size:16px"> min</span>`;q('range').value=v;rew();
-    el.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',+c.dataset.m===v));};
+    el.querySelectorAll('.chip[data-m]').forEach(c=>c.classList.toggle('on',+c.dataset.m===v));};
   rew();
   q('range').oninput=e=>set(+e.target.value);
-  el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>set(+c.dataset.m));
-  el.querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{state.settings.activity=c.dataset.act;stopAction();updateHud();redraw();if(activeTab==='focus'&&redraw!==renderFocus)renderFocus();save();});
+  el.querySelectorAll('.chip[data-m]').forEach(c=>c.onclick=()=>set(+c.dataset.m));
+  el.querySelectorAll('[data-mm]').forEach(c=>c.onclick=()=>{state.settings.magicMode=c.dataset.mm;autoGoal=null;stopAction();redraw();save();});
+  el.querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{const k=c.dataset.act;if(needPro(k))return;state.settings.activity=k;if(COMBAT.includes(k))state.settings.style=k;autoGoal=null;stopAction();updateHud();redraw();if(activeTab==='focus'&&redraw!==renderFocus)renderFocus();save();});
 }
 // The Focus button at the bottom of the screen opens the same choices in a window, ready to start.
 function openFocusModal(){
@@ -2103,6 +2312,8 @@ function renderShop(){
   <p class="sect">Books for the fireside</p><div class="list">${BOOK_ORDER.map(id=>{const b=BOOKS[id],has=state.books.includes(id),cur=state.book===id;
     const btn=cur?'<span class="sub">Reading</span>':has?`<button class="btn sm" data-readb="${id}">Read</button>`:`<button class="btn sm go" data-buyb="${id}" ${gpTotal()>=b.price?'':'disabled'}>${b.price} gp</button>`;
     return `<div class="card">${swatch([b.color,shade(b.color,-.18)])}<div class="meta"><div class="nm">${esc(b.title)}</div><div class="sub">by ${esc(b.author)}</div></div>${btn}</div>`;}).join('')}</div>
+  <p class="sect">Seeds for your farm patches${PRO.pro?'':' · RatIdle Pro'}</p><div class="list">${CROPS.map(c=>`<div class="card"><img alt="" src="${iconURL(c.seed)}"><div class="meta"><div class="nm">${esc(c.name)} seed</div>
+    <div class="sub">Farming ${c.lvl} · ${c.price} gp</div></div><button class="btn sm go" data-seed="${c.t}" data-n="1" ${gpTotal()>=c.price?'':'disabled'}>×1</button><button class="btn sm go" data-seed="${c.t}" data-n="10" ${gpTotal()>=c.price*10?'':'disabled'}>×10</button></div>`).join('')}</div>
   <p class="hint">Earn gold from focus timers and by selling to Hazel the trader. She pays far more for jewellery and cooked fish. Press READ to sit by the fire with your book.</p>`;
   const el=$('#tab-shop');
   el.querySelectorAll('[data-wear]').forEach(b=>b.onclick=()=>{state.outfit=b.dataset.wear;applyOutfit();renderShop();save();});
@@ -2111,6 +2322,8 @@ function renderShop(){
   el.querySelectorAll('[data-wall],[data-floor]').forEach(b=>b.onclick=()=>setCabinWood(b.dataset.wall?'wall':'floor',b.dataset.wall||b.dataset.floor));
   el.querySelectorAll('[data-buyb]').forEach(b=>b.onclick=()=>{const id=b.dataset.buyb,bk=BOOKS[id];if(!spend(bk.price))return;state.books.push(id);state.book=id;setBookCover();msg(`You buy <i>${esc(bk.title)}</i> by ${esc(bk.author)}. It's next on your reading pile.`,'m-green');renderShop();save();});
   el.querySelectorAll('[data-readb]').forEach(b=>b.onclick=()=>{state.book=b.dataset.readb;setBookCover();msg(`You pick up <i>${esc(BOOKS[state.book].title)}</i>.`);renderShop();save();});
+  el.querySelectorAll('[data-seed]').forEach(b=>b.onclick=()=>{if(needPro('farming'))return;const c=CROPS[+b.dataset.seed],n=+b.dataset.n;if(!spend(c.price*n))return;
+    bankAdd(c.seed,n);msg(`You buy ${n} ${esc(c.name.toLowerCase())} seed${n>1?'s':''}. They're in your bank.`,'m-green');renderShop();save();});
   const bc=$('#buy-cabin');if(bc)bc.onclick=()=>{if(!spend(nx.price))return;state.cabin.level++;msg(`Your cabin has been upgraded to a ${nx.name}!`,'m-green');banner('Cabin upgraded!',nx.name);refreshCabin();renderShop();save();};
 }
 function setCabinWood(part,w){
@@ -2283,7 +2496,7 @@ bindSlots($('#tab-bank'),id=>id?bankOpts(id):[],'b');
 
 /* ================= TRADER ================= */
 let tradeFilter='all',tradeLine='';
-const TRADE_FILTERS=[['all','All'],['good','Goods'],['raw','Raw'],['curio','Curios']];
+const TRADE_FILTERS=[['all','All'],['good','Goods'],['raw','Raw'],['supply','Supplies'],['curio','Curios']];
 const tradeKind=id=>ITEMS[id].kind||'curio';
 function openTrade(again){
   const sc=again?$('#md-body').scrollTop:0;if(!again)tradeLine=HAZEL_LINES[randi(0,HAZEL_LINES.length-1)];
@@ -2297,7 +2510,7 @@ function openTrade(again){
       return `<button class="chip ${k===tradeFilter?'on':''}" data-tf="${k}" ${c?'':'disabled'}>${n} (${c})</button>`;}).join('')}</div>`:''}
     ${ids.length?`<div class="list trade">${ids.map(id=>{const d=ITEMS[id],n=countOwned(id),pr=itemPrice(id);
       return `<div class="card"><img alt="" src="${iconURL(id)}"><div class="meta"><div class="nm">${esc(d.name)} ×${n.toLocaleString()}</div>
-        <div class="sub">${d.kind==='good'?'Finished good':d.kind==='raw'?'Raw material':'Curio'} · ${pr.toLocaleString()} gp each${pr>d.value?' <span class="ok">(villager bonus)</span>':''}</div>
+        <div class="sub">${d.kind==='good'?'Finished good':d.kind==='raw'?'Raw material':d.kind==='supply'?'Supplies':'Curio'} · ${pr.toLocaleString()} gp each${pr>d.value?' <span class="ok">(villager bonus)</span>':''}</div>
         <div class="tq"><input type="range" min="1" max="${n}" value="${n}" data-tr="${id}" aria-label="How many ${esc(d.name)} to sell" ${n<2?'disabled':''}><input type="number" min="1" max="${n}" value="${n}" data-tn="${id}" aria-label="Amount"></div>
         <div class="tb"><button class="btn sm go" data-sell="${id}">Sell for <span data-tp="${id}">${(n*pr).toLocaleString()}</span> gp</button><button class="btn sm" data-keep1="${id}" ${n<2?'disabled':''}>Sell all but 1</button></div></div></div>`;}).join('')}</div>`
       :all.length?'<p class="hint">Nothing of that kind to sell.</p>':'<p class="hint">You have nothing Hazel wants. Smith some jewellery or cook some fish.</p>'}
@@ -2324,7 +2537,7 @@ function sellItem(id,quiet,qty){
 
 /* ================= FOCUS TIMER ================= */
 function startFocus(min){
-  if(focusing())return;min=clamp(Math.round(min),5,120);
+  if(focusing()||needPro(state.settings.activity))return;min=clamp(Math.round(min),5,120);
   if(inCabin())leaveCabin(true);
   cancelPlacing();stopAction();
   const sk=state.settings.activity;
@@ -2356,7 +2569,7 @@ function completeFocus(){
   modal('Focus complete!',body,[{label:`Repeat ${f.min} min`,cls:'go',fn:()=>{state.settings.activity=pickSk;state.settings.focusMin=f.min;startFocus(f.min);}},
     {label:'Spend gold',fn:()=>showTab('shop')},{label:'Done'}]);
   const hintR=()=>{$('#rp-hint').textContent=`${f.min} min of ${SKILLS[pickSk].name.toLowerCase()}: +${focusXpFor(f.min)} XP, +${focusGoldFor(f.min,pickSk)} gp, ${focusSkillText(f.min,pickSk)}`;};hintR();
-  $('#md-body').querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{pickSk=c.dataset.act;$('#md-body').querySelectorAll('[data-act]').forEach(x=>x.classList.toggle('on',x===c));hintR();});
+  $('#md-body').querySelectorAll('[data-act]').forEach(c=>c.onclick=()=>{if(needPro(c.dataset.act))return;pickSk=c.dataset.act;$('#md-body').querySelectorAll('[data-act]').forEach(x=>x.classList.toggle('on',x===c));hintR();});
   save();renderTab();
 }
 function confirmGiveUp(){
@@ -2409,9 +2622,9 @@ function buildIsland(id){
   I=ISLANDS[id]||ISLANDS.greenhaven;
   for(const k in I.pal)GC[k]=new THREE.Color(I.pal[k]);
   scene.background.set(I.sky);scene.fog.color.set(I.sky);water.material.color.set(I.water);water.material.opacity=I.wop||.86;hemi.groundColor.set(I.pal.g3);
-  disposeGroup(worldRoot);disposeGroup(pickRoot);trees.length=0;rocks.length=0;spots.length=0;obstacles.length=0;npcs=[];clearFloor();
-  obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,MINE,{x:SEAT.x,z:SEAT.z,r:.45});
-  buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();buildMine();
+  disposeGroup(worldRoot);disposeGroup(pickRoot);trees.length=0;rocks.length=0;spots.length=0;obstacles.length=0;npcs=[];monsters=[];farmPatches=[];agiGroup=null;clearFloor();
+  obstacles.push(CHEST,FIRE,FURNACE,TRADER,SITE,MINE,ALCH,FLETCH,ALTAR,{x:SEAT.x,z:SEAT.z,r:.45});
+  buildGround();buildChest();buildFire();buildFurnace();buildTrader();buildDock();buildSite();buildMine();buildProProps();
   if(id==='greenhaven')buildCabinExterior();
   buildDecor();buildMapImg();
   buildCave();
@@ -2419,7 +2632,7 @@ function buildIsland(id){
   // The deep water off each end of the dock's platform holds one of the isle's fish, and can only be reached from the dock.
   DOCK_SPOTS.forEach((d,i)=>{const dk=new FishSpot(I.tiers[i?I.tiers.length-1:0],[{x:d.x,z:d.z}]);dk.stand=d.stand;dk.dock=true;});
   for(const [k,n] of Object.entries(I.trees))for(let i=0;i<n;i++){const p=findSpot(TREES[k].rmin,TREES[k].rmax,2.6);if(p)new TreeEnt(k,p.x,p.z);}
-  spawnNpcs();
+  spawnNpcs();spawnMonsters();
 }
 
 /* ================= ACTIONS ================= */
@@ -2471,6 +2684,7 @@ function goBank(){player.action={type:'bank',ent:CHEST};player.stuck=0;}
 function recipeOpts(skill){
   const o=[];const verb=skill==='smithing'?'Smith':'Cook';
   for(let t=5;t>=0;t--){const r=RECIPES[skill][t];if(countOwned(r.input)>=r.n&&level(skill)>=r.lvl)o.push({a:verb,t:ITEMS[r.output].name,tc:'c-item',fn:()=>startProcess(skill,r)});}
+  if(skill==='smithing')o.push(...craftOpts('furnace'));
   if(!o.length)o.push({a:verb,t:skill==='smithing'?'Furnace':'Kitchen',fn:()=>startProcess(skill,null)});
   return o;
 }
@@ -2495,9 +2709,9 @@ function entOpts(ent,point){
   else if(ent&&ent.kind==='site'){const pc=Math.floor(buildFrac(state.island)*100);
     o.push({a:'Build',t:SITE.name,fn:()=>startProcess('construction',null)},walk,ex(SITE.name,pc>=100?`The ${I.name} hut is finished. Lovely work.`:`The ${I.name} hut is ${pc}% built. Build it with logs from this isle's own trees (${Object.keys(I.trees).map(k=>ITEMS[TREES[k].item].name.toLowerCase()).join(', ')}).`));}
   else if(ent&&ent.kind==='trader')o.push({a:'Trade',t:'Hazel',tc:'c-npc',fn:()=>{player.action={type:'trade',ent:TRADER};player.stuck=0;}},
-    {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},walk,ex('Hazel',TRADER.ex));
-  else if(ent&&ent.kind==='npc')o.push({a:'Talk-to',t:ent.name,tc:'c-npc',fn:()=>{ent.hold=12;const t=()=>talkNpc(ent);if(focusing())t();else useAt(ent.x,ent.z,ent.reach,t);}},walk,
-    ex(ent.name,`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up, and spends the day ${{woodcutting:'among the trees',mining:'down the mine, coming up for air now and then',fishing:'down by the fishing spots',smithing:'by the furnace',cooking:'by the campfire'}[npcSkill(ent.isle,ent.j)]}. ${boostText(ent.isle,ent.j)}, on every isle.`));
+    {a:'Talk-to',t:'Hazel',tc:'c-npc',fn:()=>{const talk=()=>msg('Hazel: "'+esc(HAZEL_LINES[randi(0,HAZEL_LINES.length-1)])+'"');if(focusing())talk();else useAt(TRADER.x,TRADER.z,TRADER.reach,talk);}},{a:'Pickpocket',t:'Hazel',tc:'c-npc',fn:()=>startThieve(TRADER)},walk,ex('Hazel',TRADER.ex));
+  else if(ent&&ent.kind==='npc')o.push({a:'Talk-to',t:ent.name,tc:'c-npc',fn:()=>{ent.hold=12;const t=()=>talkNpc(ent);if(focusing())t();else useAt(ent.x,ent.z,ent.reach,t);}},{a:'Pickpocket',t:ent.name,tc:'c-npc',fn:()=>startThieve(ent)},walk,
+    ex(ent.name,ent.trav?`${ent.name} is visiting ${ISLANDS[ent.isle].name} and wanders about the isle. Thieving level ${thiefLvl(ent)} to pickpocket.`:`${ent.name} moved to ${ISLANDS[ent.isle].name} when its hut went up, and spends the day ${{woodcutting:'among the trees',mining:'down the mine, coming up for air now and then',fishing:'down by the fishing spots',smithing:'by the furnace',cooking:'by the campfire'}[npcSkill(ent.isle,ent.j)]}. ${boostText(ent.isle,ent.j)}, on every isle.`));
   else if(ent&&ent.kind==='ground'){const d=ITEMS[ent.id];o.push({a:'Take',t:d.name+(ent.q>1?` (${ent.q.toLocaleString()})`:''),tc:'c-item',fn:()=>takeFloor(ent)},walk,{a:'Examine',t:d.name,tc:'c-item',fn:()=>msg(itemEx(ent.id))});}
   else if(ent&&ent.kind==='dock')o.push(walk,ex('Dock',DOCK.ex));
   else if(ent&&ent.kind==='boat')o.push({a:'Travel',t:'Rowing boat',fn:()=>{player.action={type:'boat',ent:BOAT};player.stuck=0;}},walk,ex('Rowing boat',BOAT.ex));
@@ -2513,6 +2727,18 @@ function entOpts(ent,point){
     o.push(furnAction(f,ent));
     o.push({a:'Rotate',t:ent.name,fn:()=>{f.rot=((f.rot||0)+1)%4;buildInterior();save();}},walk,
       {a:'Dismantle',t:ent.name,fn:()=>dismantle(ent.idx)},ex(ent.name,`${art(ent.name)} ${ent.name.toLowerCase()}, handmade from ${WOOD_NAME[f.wood].toLowerCase()} logs.`.replace(/^./,c=>c.toUpperCase())));}
+  else if(ent&&ent.kind==='monster')o.push({a:'Attack',t:`${ent.def.name} (level ${ent.def.lvl})`,tc:'c-npc',fn:()=>startFight(ent)},walk,
+    ex(ent.def.name,`${ent.def.ex} Level ${ent.def.lvl}, ${ent.hp}/${ent.def.hp} health.${PRO.pro?'':' Fighting is part of RatIdle Pro.'}`));
+  else if(ent&&(ent.kind==='alch'||ent.kind==='fletch'||ent.kind==='altar'))o.push(...craftOpts(ent.kind),walk,ex(ent.name,ent.ex+(PRO.pro?'':' Part of RatIdle Pro.')));
+  else if(ent&&ent.kind==='patch'){const p=patchState(ent.idx),st=patchStage(p);
+    if(st==='ripe')o.push({a:'Harvest',t:CROPS[p.t].name,tc:'c-item',fn:()=>farmAct(ent.idx,'harvest')});
+    else if(st==='empty'){for(let t=5;t>=0;t--)if(level('farming')>=CROPS[t].lvl&&countOwned(CROPS[t].seed)>0)o.push({a:'Plant',t:CROPS[t].name+' seed',tc:'c-item',fn:()=>farmAct(ent.idx,'plant',t)});
+      if(!o.length)o.push({a:'Plant',t:'Farm patch',fn:()=>farmAct(ent.idx,'plant')});}
+    o.push(walk,ex('Farm patch',!p?`An empty farm patch. Plant a seed in it.${PRO.pro?'':' Farming is part of RatIdle Pro.'}`:st==='ripe'?`${CROPS[p.t].name}, ready to harvest.`:`${CROPS[p.t].name}, growing. Ready in about ${clock(growMs(p)-(Date.now()-p.at))}.`));}
+  else if(ent&&ent.kind==='agi'){const c=state.agility[state.island],co=c!=null?AGILITY[state.island][c]:null;
+    if(co)o.push({a:'Run',t:co.name,fn:()=>startAgility()});
+    o.push({a:co?'Rebuild':'Build',t:'Agility course',fn:()=>{if(!needPro('agility'))openAgility();}},walk,
+      ex('Agility course',co?`The ${co.name.toLowerCase()} course. ${agiFxText(co)}, on every isle.`:`A plot staked out for an agility course. It can be built one of three ways.${PRO.pro?'':' Agility is part of RatIdle Pro.'}`));}
   else if(point){o.push(walk);if(inCabin()||point.y>WATER_Y+.1)o.push({a:'Lie down',t:'here',fn:()=>lieDown(point.x,point.z)});}
   if(focusing())return o.filter(x=>x.a==='Examine'||x.a==='Talk-to');
   return o;
@@ -2579,6 +2805,8 @@ function autoStuck(){
 let kitchenHint='';
 function autoNext(){
   if(player.restMode||placing)return;
+  autoDrinkPotions();
+  if(proSkill(activity())){autoPro(activity());return;}
   const act=activity(),gs=GATHER_OF[act],m=inMine(),c=inCabin(),cook=act==='cooking';
   // Inside the cabin AUTO only cooks; for anything else it waits until you step outside.
   if(c&&!cook)return;
@@ -2657,12 +2885,14 @@ function gainXp(sk,base,flat){
 }
 function levelUp(sk,from,to){
   native({type:'haptic',style:'success'});const S=SKILLS[sk];
+  if(sk==='health'&&state.hp!=null)state.hp=Math.min(maxHp(),state.hp+(to-from));
   msg(`Congratulations, you've just advanced your ${S.name} level. You are now level ${to}.`,'m-blue');sfx.level();
   let sub='';
   if(sk==='woodcutting'){const u=TREE_ORDER.filter(k=>TREES[k].lvl>from&&TREES[k].lvl<=to).map(k=>TREES[k].name);if(u.length)sub=`You can now chop ${u.join(', ')} trees.`;}
   else if(sk==='mining'){const u=ROCKS.filter(r=>r.lvl>from&&r.lvl<=to).map(r=>r.ore);if(u.length)sub=`You can now mine ${u.join(', ')}.`;}
   else if(sk==='fishing'){const u=FISHES.filter(r=>r.lvl>from&&r.lvl<=to).map(r=>r.fish);if(u.length)sub=`You can now catch ${u.join(', ')}.`;}
   else if(sk==='construction')sub='';
+  else if(proSkill(sk))sub=proUnlocks(sk,from,to);
   else{const u=RECIPES[sk].filter(r=>r.lvl>from&&r.lvl<=to).map(r=>ITEMS[r.output].name);if(u.length)sub=`You can now make ${u.join(', ')}.`;}
   const upg=TOOL_TIERS.filter(a=>a.lvl>from&&a.lvl<=to).pop();
   if(upg){const n=toolName(sk);
@@ -2809,7 +3039,7 @@ function stepToward(gx,gz,dt){
     else if(pp==='plat'&&gp!=='plat'&&Math.abs(player.x)>.6){gx=0;gz=41.8;via=true;}
     else if(pp!=='land'&&gp==='land'){gx=0;gz=37;via=true;}}
   const dx=gx-player.x,dz=gz-player.z,d=Math.hypot(dx,dz);if(d<.05)return !via;
-  const s=Math.min(d,SPEED*dt);const mx=dx/d,mz=dz/d;const ox=player.x,oz=player.z;
+  const s=Math.min(d,SPEED*moveMul()*dt);const mx=dx/d,mz=dz/d;const ox=player.x,oz=player.z;
   player.x+=mx*s;player.z+=mz*s;player.faceT=Math.atan2(dx,dz);player.anim='walk';
   for(const c of colliders()){const cx=player.x-c.x,cz=player.z-c.z,cd=Math.hypot(cx,cz),m=c.r+.3;
     if(cd<m&&cd>1e-4){const push=m-cd;let tx=-cz/cd,tz=cx/cd;if(tx*mx+tz*mz<0){tx=-tx;tz=-tz;}
@@ -2826,7 +3056,7 @@ function approach(ent,reach,dt){
 }
 const entAlive=e=>trees.includes(e)||rocks.includes(e)||spots.includes(e);
 function updatePlayer(dt){
-  player.anim='idle';const a=player.action;
+  player.anim='idle';player.hop=0;const a=player.action;
   if(player.resting){}
   else if(a){
     if(a.type==='walk'){if(stepToward(a.x,a.z,dt)||player.stuck>1)stopAction();}
@@ -2848,6 +3078,36 @@ function updatePlayer(dt){
         if(!a.hit&&p>=.66){a.hit=true;doProcess(a);if(a.skill==='smithing'){for(let i=0;i<5;i++){const an=rand(0,6.28);spawnPart(a.ent.x,height(a.ent.x,a.ent.z)+1.2,a.ent.z,'#ffc040',Math.cos(an)*2,rand(1,3),Math.sin(an)*2,.4);}}}
         if(a.timer>=cyc){a.timer-=cyc;a.hit=false;}
       }else if(player.stuck>2){stopAction();}
+    }else if(a.type==='craft'){
+      if(!a.ent||approach(a.ent,a.ent.reach,dt)){
+        if(a.ent)player.faceT=Math.atan2(a.ent.x-player.x,a.ent.z-player.z);player.anim=a.skill;
+        if(!a.cyc||a.timer<dt)a.cyc=craftCycle(a.recipe);a.timer+=dt;
+        if(!a.hit&&a.timer/a.cyc>=.66){a.hit=true;doCraft(a);
+          if(a.ent)for(let i=0;i<5;i++){const an=rand(0,6.28);spawnPart(a.ent.x,height(a.ent.x,a.ent.z)+1.2,a.ent.z,a.skill==='alchemy'?'#40e0b0':a.skill==='runecrafting'?'#c070ff':'#ffc040',Math.cos(an)*1.5,rand(1,2.5),Math.sin(an)*1.5,.5);}}
+        if(a.timer>=a.cyc){a.timer-=a.cyc;a.hit=false;}
+      }else if(player.stuck>2)stopAction();
+    }else if(a.type==='fight'){const m=a.ent;
+      if(!monsters.includes(m)||!m.available()||m.ver!==a.ver)stopAction();
+      else{const st=fightStats(a.style);
+        if(!st){msg(noAmmoText(a.style),'m-red');stopAction();}
+        else if(approach(m,st.reach,dt)){a.engaged=true;player.faceT=Math.atan2(m.x-player.x,m.z-player.z);player.anim=a.style;
+          if(!a.started){a.started=true;msg(`You attack the ${esc(m.def.name.toLowerCase())}.`);m.atkT=Math.min(m.atkT,1.4);}
+          if(!a.cyc)a.cyc=st.cyc/(1+boost('speed',a.style));a.timer+=dt;
+          if(!a.hit&&a.timer/a.cyc>=.6){a.hit=true;playerHit(m,a.style,st);}
+          if(player.action===a&&a.timer>=a.cyc){a.timer-=a.cyc;a.hit=false;}
+        }else if(player.stuck>2)stopAction();}
+    }else if(a.type==='thieve'){const e=a.ent;
+      if(e.kind==='npc'&&(!npcs.includes(e)||e.under!==inMine()))stopAction();
+      else if(a.stun>0){a.stun-=dt;if(e.kind==='npc')e.hold=Math.max(e.hold||0,1);}
+      else if(approach(e,(e.r||.4)+.85,dt)){if(e.kind==='npc')e.hold=Math.max(e.hold||0,2.5);player.faceT=Math.atan2(e.x-player.x,e.z-player.z);player.anim='thieving';
+        if(!a.started){a.started=true;msg(`You try to pick ${esc(thiefName(e))}'s pocket...`);}
+        a.timer+=dt;if(a.timer>=CYCLE.thieving/(1+boost('speed','thieving'))){a.timer=0;doThieve(a);}
+      }else if(player.stuck>2)stopAction();
+    }else if(a.type==='farm'){const e=farmPatches[a.idx];
+      if(!e||!onIsle())stopAction();
+      else if(approach(e,e.reach,dt)){player.faceT=Math.atan2(e.x-player.x,e.z-player.z);player.anim='farming';a.timer+=dt;if(a.timer>=CYCLE.farming){stopAction();doFarm(a);}}
+      else if(player.stuck>2)stopAction();
+    }else if(a.type==='agility'){updateAgility(a,dt);
     }else if(a.type==='bank'){
       if(approach(CHEST,CHEST.reach,dt)){player.faceT=Math.atan2(CHEST.x-player.x,CHEST.z-player.z);depositAll();stopAction();}
       else if(player.stuck>2){stopAction();}
@@ -2879,7 +3139,7 @@ function updatePlayer(dt){
   }else if(state.settings.auto&&!player.restMode){player.idle+=dt;if(player.idle>.9){player.idle=0;autoNext();}}
   player.face=angLerp(player.face,player.faceT,dt*12);
   player.y=lerp(player.y,groundY(player.x,player.z),Math.min(1,dt*15));
-  P.g.position.set(player.x,player.y-(P.g.userData.drop||0),player.z);P.g.rotation.y=player.face;
+  P.g.position.set(player.x,player.y-(P.g.userData.drop||0)+player.hop,player.z);P.g.rotation.y=player.face;
 }
 
 /* ================= CAMERA + INPUT ================= */
@@ -3030,6 +3290,11 @@ function drawMinimap(){
     g.fillStyle='#ff6a00';g.beginPath();g.arc(FIRE.x,FIRE.z,.6,0,Math.PI*2);g.fill();
     g.fillStyle='#8a847c';g.fillRect(FURNACE.x-.7,FURNACE.z-.7,1.4,1.4);
     g.fillStyle='#c0392b';g.fillRect(TRADER.x-.9,TRADER.z-.6,1.8,1.2);
+    g.strokeStyle='#a03020';g.lineWidth=.6;g.beginPath();g.arc(ARENA.x,ARENA.z,ARENA.r,0,Math.PI*2);g.stroke();
+    g.fillStyle='#ff4040';for(const m of monsters)if(m.available()){g.beginPath();g.arc(m.x,m.z,.6,0,Math.PI*2);g.fill();}
+    g.fillStyle='#40e0b0';g.fillRect(ALCH.x-.6,ALCH.z-.6,1.2,1.2);g.fillStyle='#c8a060';g.fillRect(FLETCH.x-.6,FLETCH.z-.6,1.2,1.2);g.fillStyle='#c070ff';g.fillRect(ALTAR.x-.6,ALTAR.z-.6,1.2,1.2);
+    g.fillStyle='#4a3420';for(const p of FARM_SPOTS)g.fillRect(p.x-.9,p.z-.9,1.8,1.8);
+    g.strokeStyle='#3a6ab8';g.beginPath();g.arc(AGI.x,AGI.z,3.3,0,Math.PI*2);g.stroke();
     g.fillStyle='#8a5a2e';g.fillRect(-.8,35.4,1.6,5.8);g.fillRect(-6,40.9,12,2.7);g.fillStyle='#c08040';g.fillRect(-.6,44.2,1.2,2.4);
     if(state.island==='greenhaven'){g.fillStyle=woodBark(state.cabin.wall);g.fillRect(CABIN.x-CABIN.r*.85,CABIN.z-CABIN.r*.7,CABIN.r*1.7,CABIN.r*1.4);}
     if(pet){g.fillStyle='#ffff00';g.fillRect(pet.x-.4,pet.z-.4,.8,.8);}
@@ -3051,11 +3316,703 @@ mm.addEventListener('click',e=>{sfx.init();const r=mm.getBoundingClientRect();co
   const cy=Math.cos(cam.yaw),sy2=Math.sin(cam.yaw);walkTo(player.x+dx*cy+dy*sy2,player.z-dx*sy2+dy*cy);xmark(e.clientX,e.clientY,false);});
 mm.addEventListener('contextmenu',e=>e.preventDefault());
 
+/* ================= RATIDLE PRO: WORLD ================= */
+// The workshop east of the campfire, the arena to the north, the farm by the hut and the agility course out east.
+const ALCH={kind:'alch',name:'Alchemy table',x:7.8,z:-.6,r:.85,reach:1.55,ex:'A table with a bubbling cauldron. Brew potions here from ore and raw fish.'};
+const FLETCH={kind:'fletch',name:'Fletching bench',x:7.6,z:3.9,r:.9,reach:1.55,ex:'A workbench with a knife and a pot of glue. Fletch arrowtips onto logs here to make arrows.'};
+const ALTAR={kind:'altar',name:'Runic altar',x:10.6,z:-5.6,r:1.0,reach:1.7,ex:'An old standing stone carved with runes. Bind rune essence into runes here.'};
+const STATIONS={furnace:FURNACE,fletch:FLETCH,alch:ALCH,altar:ALTAR};
+const ARENA={x:1,z:-17,r:5.5};
+const AGI={kind:'agi',name:'Agility course',x:15,z:10,r:0,reach:2.2};
+const FARM_SPOTS=[{x:-12.6,z:12.4},{x:-10.4,z:13.4},{x:-8.2,z:14.4}];
+// Trees, rocks and bushes never grow in the arena, on the farm or on the course.
+const NO_SPAWN=[{x:ARENA.x,z:ARENA.z,r:ARENA.r+1.2},{x:FARM_SPOTS[1].x,z:FARM_SPOTS[1].z,r:3.4},{x:AGI.x,z:AGI.z,r:4.8}];
+let monsters=[],farmPatches=[],agiGroup=null,alchBrew=null,altarGem=null;
+function buildAlch(){
+  const g=new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(1.5,.1,.8),'#7a5230',0,.8,0));
+  for(const sx of[-1,1])for(const sz of[-1,1])g.add(mesh(new THREE.BoxGeometry(.1,.8,.1),'#5a3a20',sx*.65,.4,sz*.3));
+  g.add(mesh(new THREE.CylinderGeometry(.32,.26,.36,8),'#2e2e34',-.3,1.03,0));
+  alchBrew=basic(new THREE.CylinderGeometry(.27,.27,.03,8),0x40e0b0,-.3,1.2,0);g.add(alchBrew);
+  [['#e04040',.25],['#4a8ae0',.45],['#f0d040',.62]].forEach(([c,x])=>g.add(mesh(new THREE.CylinderGeometry(.06,.07,.18,6),c,x,.94,.12),mesh(new THREE.BoxGeometry(.04,.06,.04),'#c8a070',x,1.06,.12)));
+  g.position.set(ALCH.x,height(ALCH.x,ALCH.z),ALCH.z);g.rotation.y=Math.atan2(-ALCH.x,-ALCH.z);tagEnt(g,ALCH);pickRoot.add(g);
+}
+function buildFletch(){
+  const g=new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(1.6,.12,.7),'#8a5a2e',0,.72,0));
+  for(const sx of[-1,1])g.add(mesh(new THREE.BoxGeometry(.12,.72,.6),'#5a3a20',sx*.66,.36,0));
+  for(let i=0;i<3;i++){const l=mesh(new THREE.CylinderGeometry(.12,.12,.7,6),i%2?'#7a5230':'#8b6436',-.4+i*.12,.92,-.12+i*.04);l.rotation.z=Math.PI/2;g.add(l);}
+  for(let i=0;i<5;i++)g.add(mesh(new THREE.BoxGeometry(.03,.03,.5),'#c8a060',.3+i*.07,.8,.1));
+  g.add(mesh(new THREE.BoxGeometry(.04,.5,.04),'#4a2e18',.55,1.0,-.2),mesh(new THREE.BoxGeometry(.06,.14,.12),'#b8b8c0',.55,1.3,-.2));
+  g.position.set(FLETCH.x,height(FLETCH.x,FLETCH.z),FLETCH.z);g.rotation.y=Math.atan2(-FLETCH.x,-FLETCH.z);tagEnt(g,FLETCH);pickRoot.add(g);
+}
+function buildAltar(){
+  const g=new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.1,1.25,.25,8),'#8a8a92',0,.12,0),mesh(new THREE.BoxGeometry(.7,1.9,.4),'#9a94a8',0,1.15,0));
+  for(let i=0;i<3;i++)g.add(basic(new THREE.BoxGeometry(.32,.06,.02),0xc070ff,0,.7+i*.4,.21));
+  altarGem=mesh(new THREE.OctahedronGeometry(.18,0),'#c060f0',0,2.5,0,{emissive:0x502080});g.add(altarGem);
+  g.position.set(ALTAR.x,height(ALTAR.x,ALTAR.z),ALTAR.z);g.rotation.y=Math.atan2(-ALTAR.x,-ALTAR.z);tagEnt(g,ALTAR);pickRoot.add(g);
+}
+// A ring of posts and rope around the arena, with a banner on each side.
+function buildArena(){
+  const g=new THREE.Group(),n=18;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2,x=ARENA.x+Math.cos(a)*ARENA.r,z=ARENA.z+Math.sin(a)*ARENA.r,y=height(x,z);
+    g.add(mesh(new THREE.BoxGeometry(.16,1.1,.16),'#6a4a2a',x,y+.55,z));
+    const b=(i+1)/n*Math.PI*2,x2=ARENA.x+Math.cos(b)*ARENA.r,z2=ARENA.z+Math.sin(b)*ARENA.r,y2=height(x2,z2),L=Math.hypot(x2-x,z2-z);
+    const rope=mesh(new THREE.BoxGeometry(.05,.05,L),'#d8c08a',(x+x2)/2,(y+y2)/2+.9,(z+z2)/2);rope.lookAt((x2+x)/2+(x2-x),(y+y2)/2+.9+(y2-y),(z+z2)/2+(z2-z));rope.castShadow=false;g.add(rope);
+    if(i%(n/3)===0)g.add(basic(new THREE.BoxGeometry(.04,.6,.4),0xc0392b,x,y+1.25,z));}
+  worldRoot.add(g);
+}
+function patchState(i){return(state.farm[state.island]||[])[i]||null;}
+const growMs=p=>CROPS[p.t].grow*1000/(1+boost('speed','farming'));
+const patchFrac=p=>p?clamp((Date.now()-p.at)/growMs(p),0,1):0;
+const patchStage=p=>!p?'empty':patchFrac(p)>=1?'ripe':'growing';
+const patchKey=p=>p?p.t+':'+patchStage(p)+':'+Math.floor(patchFrac(p)*4):'empty';
+function buildPatch(i){
+  const s=FARM_SPOTS[i],e=farmPatches[i]||(farmPatches[i]={kind:'patch',idx:i,x:s.x,z:s.z,r:0,reach:1.3,name:'Farm patch',g:null,key:''});
+  if(e.g){pickRoot.remove(e.g);disposeGroup(e.g);}
+  const g=new THREE.Group(),p=patchState(i),st=patchStage(p);
+  g.add(mesh(new THREE.BoxGeometry(1.8,.22,1.8),'#4a3420',0,.06,0));
+  for(const [w,d,x,z] of [[1.95,.12,0,.92],[1.95,.12,0,-.92],[.12,1.95,.92,0],[.12,1.95,-.92,0]])g.add(mesh(new THREE.BoxGeometry(w,.26,d),'#7a5530',x,.1,z));
+  for(let k=0;k<3;k++)g.add(mesh(new THREE.BoxGeometry(1.5,.05,.18),'#3a2818',0,.19,-.5+k*.5));
+  if(p){const c=CROPS[p.t],f=st==='ripe'?1:.3+.6*patchFrac(p);
+    for(let r=0;r<3;r++)for(let k=0;k<3;k++){const x=-.5+k*.5,z=-.5+r*.5,leaf=mesh(new THREE.ConeGeometry(.13,.42,5),st==='ripe'?'#3e8a2e':'#5aaa3a',x,.2+.21*f,z);
+      leaf.scale.setScalar(f);g.add(leaf);if(st==='ripe')g.add(mesh(new THREE.IcosahedronGeometry(.12,0),c.col,x,.34,z+.1));}}
+  e.key=patchKey(p);g.position.set(s.x,height(s.x,s.z),s.z);g.rotation.y=.42;tagEnt(g,e);pickRoot.add(g);e.g=g;
+}
+function buildFarm(){farmPatches=[];FARM_SPOTS.forEach((s,i)=>buildPatch(i));}
+function updatePatches(){if(onIsle())farmPatches.forEach((e,i)=>{if(patchKey(patchState(i))!==e.key)buildPatch(i);});}
+// The course is four obstacles in a ring. Unbuilt, it's a staked-out plot with a sign.
+const agiWay=i=>{const a=i*Math.PI/2+.4;return{x:AGI.x+Math.cos(a)*3.3,z:AGI.z+Math.sin(a)*3.3};};
+const agiBuilt=(isle=state.island)=>state.agility[isle]!=null;
+function buildAgi(){
+  if(agiGroup){pickRoot.remove(agiGroup);disposeGroup(agiGroup);}
+  const g=new THREE.Group(),o=state.agility[state.island],y0=height(AGI.x,AGI.z);
+  if(o==null){for(let i=0;i<4;i++){const p=agiWay(i);g.add(mesh(new THREE.BoxGeometry(.08,.6,.08),'#c8a060',p.x-AGI.x,height(p.x,p.z)-y0+.3,p.z-AGI.z));}
+    g.add(mesh(new THREE.BoxGeometry(.1,1.2,.1),'#6a4a2a',0,.6,0),mesh(new THREE.BoxGeometry(.9,.5,.06),'#c8a060',0,1.2,0));}
+  else{const look=AGI_LOOK[o];
+    for(let i=0;i<4;i++){const p=agiWay(i),q=agiWay((i+1)%4),mx=(p.x+q.x)/2,mz=(p.z+q.z)/2,len=Math.hypot(q.x-p.x,q.z-p.z);
+      const s=new THREE.Group();s.position.set(mx-AGI.x,height(mx,mz)-y0,mz-AGI.z);s.rotation.y=Math.atan2(q.x-p.x,q.z-p.z);
+      if(look==='beam'){s.add(mesh(new THREE.BoxGeometry(.3,.16,len-.6),'#8a5a2e',0,.5,0));for(const z of[-(len-.6)/2+.2,(len-.6)/2-.2])s.add(mesh(new THREE.BoxGeometry(.14,.5,.14),'#5a3a20',0,.25,z));}
+      else if(look==='stone')for(let k=0;k<4;k++)s.add(mesh(new THREE.CylinderGeometry(.32,.38,.3+k%2*.14,7),I.pal.rock,0,.15,-len/2+.7+k*(len-1.4)/3));
+      else for(let k=0;k<2;k++){const z=-len/4+k*len/2;s.add(mesh(new THREE.BoxGeometry(.9,.08,.08),'#e8e0d0',0,.55,z));for(const sx of[-1,1])s.add(mesh(new THREE.BoxGeometry(.08,.6,.08),'#c0392b',sx*.42,.3,z));}
+      g.add(s);}
+    g.add(mesh(new THREE.CylinderGeometry(.05,.05,2.4,5),'#d8d8d8',0,1.2,0),basic(new THREE.BoxGeometry(.03,.45,.7),new THREE.Color(I.pal.bush).getHex(),0,2.1,.35));}
+  g.position.set(AGI.x,y0,AGI.z);tagEnt(g,AGI);pickRoot.add(g);agiGroup=g;
+}
+function buildProProps(){buildAlch();buildFletch();buildAltar();buildArena();buildFarm();buildAgi();}
+
+/* ================= RATIDLE PRO: MONSTERS ================= */
+const MON_H=[1.0,1.0,1.9,1.4,2.3,2.4];
+function buildMonsterModel(t){
+  const g=new THREE.Group(),c=MONSTERS[t].col,add=(...a)=>{const m=mesh(...a);g.add(m);return m;};
+  const eyes=(y,z,sp,col=0x111111)=>{for(const sx of[-1,1])g.add(basic(new THREE.BoxGeometry(.07,.08,.03),col,sx*sp,y,z));};
+  if(t===0){const b=add(new THREE.IcosahedronGeometry(.42,1),c,0,.36,0,{transparent:true,opacity:.85});b.scale.y=.75;eyes(.45,.38,.13);}
+  else if(t===1){add(new THREE.BoxGeometry(.8,.28,.6),c,0,.3,0);
+    for(const sx of[-1,1]){add(new THREE.BoxGeometry(.22,.16,.3),shade(c,.08),sx*.48,.38,.36);
+      for(let i=0;i<3;i++){const l=add(new THREE.BoxGeometry(.32,.05,.05),shade(c,-.1),sx*.5,.18,-.18+i*.16);l.rotation.z=sx*.5;}
+      add(new THREE.BoxGeometry(.05,.16,.05),'#222',sx*.12,.52,.2);}}
+  else if(t===2){add(new THREE.BoxGeometry(.5,.6,.34),'#6a4a2a',0,.75,0);add(new THREE.BoxGeometry(.42,.38,.38),c,0,1.27,0);
+    for(const sx of[-1,1]){add(new THREE.BoxGeometry(.16,.5,.16),c,sx*.13,.25,0);const ear=add(new THREE.ConeGeometry(.08,.3,4),c,sx*.28,1.4,0);ear.rotation.z=-sx*1.1;}
+    const sp=add(new THREE.CylinderGeometry(.025,.025,1.5,4),'#8a6a3a',.36,.9,.1);sp.rotation.x=.25;add(new THREE.ConeGeometry(.06,.18,4),'#b8b8c0',.36,1.62,.3);eyes(1.3,.2,.1,0xffe040);}
+  else if(t===3){add(new THREE.BoxGeometry(.4,.4,.8),c,0,.5,0);add(new THREE.BoxGeometry(.36,.34,.38),c,0,.8,.5);add(new THREE.BoxGeometry(.38,.1,.4),'#2a2a2a',0,.84,.52);
+    for(const sx of[-1,1]){add(new THREE.ConeGeometry(.08,.2,4),c,sx*.12,1.05,.45);for(const sz of[-1,1])add(new THREE.BoxGeometry(.1,.32,.1),shade(c,-.1),sx*.13,.16,sz*.28);}
+    const tail=add(new THREE.ConeGeometry(.13,.6,5),c,0,.6,-.6);tail.rotation.x=-2.2;add(new THREE.BoxGeometry(.3,.26,.24),'#a88a5a',.24,.66,-.1);eyes(.9,.69,.09,0xffe040);}
+  else if(t===4){add(new THREE.ConeGeometry(.45,1.5,7),c,0,.75,0,{transparent:true,opacity:.75});add(new THREE.SphereGeometry(.3,7,5),shade(c,.1),0,1.6,0,{transparent:true,opacity:.8});
+    for(const sx of[-1,1]){const arm=add(new THREE.ConeGeometry(.1,.7,5),c,sx*.4,1.1,.1,{transparent:true,opacity:.7});arm.rotation.z=sx*2.4;}eyes(1.63,.27,.1,0x80f0ff);}
+  else{const glow={emissive:0x205060};add(new THREE.OctahedronGeometry(.5,0),c,0,1.05,0,glow);add(new THREE.OctahedronGeometry(.3,0),shade(c,.1),0,1.75,0,glow);
+    for(const sx of[-1,1]){add(new THREE.OctahedronGeometry(.24,0),c,sx*.6,1.1,0,glow);add(new THREE.OctahedronGeometry(.22,0),shade(c,-.1),sx*.25,.3,0,glow);}eyes(1.78,.24,.1,0xffffff);}
+  return g;
+}
+const arenaPoint=()=>{const a=rand(0,Math.PI*2),r=Math.sqrt(Math.random())*(ARENA.r-1.3);return{x:ARENA.x+Math.cos(a)*r,z:ARENA.z+Math.sin(a)*r};};
+const monQuat=new THREE.Quaternion();
+class MonsterEnt{
+  constructor(t){this.kind='monster';this.t=t;this.def=MONSTERS[t];this.r=.55;this.cr=.55;this.ver=0;this.group=new THREE.Group();
+    this.body=buildMonsterModel(t);this.group.add(this.body);
+    this.bar=new THREE.Group();this.bar.position.y=MON_H[t]+.3;this.barFg=basic(new THREE.BoxGeometry(.9,.1,.03),0x30d030);
+    this.bar.add(basic(new THREE.BoxGeometry(.9,.1,.02),0xa01010),this.barFg);this.bar.visible=false;this.group.add(this.bar);
+    tagEnt(this.group,this);pickRoot.add(this.group);this.spawn();monsters.push(this);}
+  get name(){return this.def.name;}
+  get reach(){return 1.4;}
+  available(){return this.state==='alive';}
+  spawn(){const p=arenaPoint();this.x=p.x;this.z=p.z;this.tx=p.x;this.tz=p.z;this.hp=this.def.hp;this.state='alive';this.ver++;this.wait=rand(1,5);
+    this.face=rand(0,6.28);this.atkT=MONSTER_SPEED;this.dying=0;this.group.visible=true;this.body.scale.setScalar(1);this.place();}
+  place(){this.group.position.set(this.x,height(this.x,this.z),this.z);this.group.rotation.y=this.face;}
+  die(){this.state='dead';this.timer=rand(8,15);this.dying=.45;this.bar.visible=false;}
+  update(dt,T){
+    if(this.state==='dead'){if(this.dying>0){this.dying-=dt;this.body.scale.setScalar(Math.max(.01,this.dying*2.2));if(this.dying<=0)this.group.visible=false;}
+      else if((this.timer-=dt)<=0){this.spawn();puff(this.x,height(this.x,this.z)+.6,this.z,'#e0d8c0');}return;}
+    const a=player.action,fighting=!!a&&a.type==='fight'&&a.ent===this&&a.engaged;
+    if(fighting){this.face=angLerp(this.face,Math.atan2(player.x-this.x,player.z-this.z),dt*6);if((this.atkT-=dt)<=0){this.atkT=MONSTER_SPEED;monsterHit(this);}}
+    else{this.atkT=Math.min(MONSTER_SPEED,this.atkT+dt);const dx=this.tx-this.x,dz=this.tz-this.z,d=Math.hypot(dx,dz);
+      if(d>.1){const s=Math.min(d,.8*dt);this.x+=dx/d*s;this.z+=dz/d*s;this.face=angLerp(this.face,Math.atan2(dx,dz),dt*4);}
+      else if((this.wait-=dt)<=0){const p=arenaPoint();this.tx=p.x;this.tz=p.z;this.wait=rand(3,8);}}
+    const w=Math.sin(T*4+this.z);
+    this.body.position.y=this.t===4?.35+Math.sin(T*2+this.x)*.12:Math.abs(Math.sin(T*5+this.x))*.05;
+    if(this.t===0)this.body.scale.set(1+w*.06,1-w*.06,1+w*.06);
+    this.bar.visible=this.hp<this.def.hp||fighting;
+    if(this.bar.visible){const f=clamp(this.hp/this.def.hp,0,1);this.barFg.scale.x=Math.max(.001,f);this.barFg.position.x=-.45*(1-f);
+      this.bar.quaternion.copy(monQuat.copy(this.group.quaternion).invert().multiply(camera.quaternion));}
+    this.place();
+  }
+}
+function spawnMonsters(){monsters=[];for(const t of I.tiers)for(let i=0;i<3;i++)new MonsterEnt(t);}
+// Damage numbers that float up from whoever was hit.
+const splatV=new THREE.Vector3();
+function splat(x,y,z,text,col){
+  if(document.hidden)return;splatV.set(x,y,z).project(camera);if(splatV.z>1)return;
+  const d=document.createElement('div');d.className='splat';d.textContent=text;d.style.background=col;
+  d.style.left=((splatV.x+1)/2*innerWidth).toFixed(0)+'px';d.style.top=((1-splatV.y)/2*VH).toFixed(0)+'px';document.body.appendChild(d);setTimeout(()=>d.remove(),900);
+}
+function shotFx(m,col,n){const y=player.y+1.5,ty=height(m.x,m.z)+MON_H[m.t]*.55,dx=m.x-player.x,dz=m.z-player.z,dur=.28;
+  for(let i=0;i<n;i++)spawnPart(player.x+rand(-.1,.1),y+rand(-.1,.1),player.z+rand(-.1,.1),col,dx/dur,(ty-y)/dur,dz/dur,dur,0);}
+
+/* ================= RATIDLE PRO: COMBAT ================= */
+const cbLevel=()=>Math.floor((level('block')+level('health')+Math.max((level('attack')+level('strength'))/2,level('ranged'),level('magic')))/3);
+const maxHp=()=>9+level('health')+toolIdx('health')*2+Math.round(boost('hp'));
+const combatStyle=()=>COMBAT.includes(activity())?activity():state.settings.style;
+function bestArrow(){for(let t=5;t>=0;t--)if(level('ranged')>=LV[t]&&countOwned(arrowId(t))>0)return t;return -1;}
+function bestSpell(){for(let t=5;t>=0;t--)if(level('magic')>=LV[t]&&countOwned(runeId(t))>0)return t;return -1;}
+// Attack picks how accurate a melee hit is, and Strength how hard. Ranged and Magic do both with their own level.
+function fightStats(style){
+  if(MELEE.includes(style)){const w=toolIdx('attack'),gl=toolIdx('strength');return{acc:level('attack')+w*4,max:1+Math.floor((level('strength')+gl*3+w*2)/7),cyc:CYCLE.attack,reach:1.4};}
+  if(style==='ranged'){const ar=bestArrow();if(ar<0)return null;const b=toolIdx('ranged');
+    return{acc:level('ranged')+b*4+ar*3,max:1+Math.floor((level('ranged')+b*2+ar*4)/7),cyc:CYCLE.ranged,reach:5.5,ammo:arrowId(ar),tier:ar};}
+  const sp=bestSpell();if(sp<0)return null;
+  return{acc:level('magic')+toolIdx('magic')*4+sp*2,max:2+sp*3+Math.floor(level('magic')/12),cyc:CYCLE.magic,reach:5.5,ammo:runeId(sp),tier:sp};
+}
+const noAmmoText=style=>style==='ranged'?`You have no arrows you can shoot. Fletch some at the fletching bench (Ranged ${LV[0]} uses copper arrows).`
+  :'You have no runes for a spell you know. Craft some at the runic altar from rune essence.';
+// Every hit trains the style you fight with, and Health a little. Fighting in the Health style spreads it around.
+function combatXp(style,d,st){const h=['health',d*1.33];
+  if(style==='health')return[['attack',d*1.33],['strength',d*1.33],['block',d*1.33],['health',d*2]];
+  if(style==='magic')return[['magic',d*2+SPELL_XP[st.tier]],h];
+  return[[style,d*4],h];}
+function startFight(m,quiet){
+  const style=combatStyle();if(needPro(style,quiet)||!m.available())return false;
+  if(!onIsle()){if(!quiet)msg('You can only fight in the arena.');return false;}
+  if(!fightStats(style)){if(!quiet)msg(noAmmoText(style),'m-red');return false;}
+  if(state.settings.autoEat&&state.hp<=maxHp()*.5)eatFood(true);
+  player.action={type:'fight',ent:m,ver:m.ver,style,timer:0,hit:false,started:false,engaged:false};player.stuck=0;return true;
+}
+function playerHit(m,style,st){
+  if(st.ammo)consume(st.ammo,1,false);
+  if(style==='ranged'){shotFx(m,ORE_T[st.tier][2],3);sfx.tone(rand(380,440),.08,'triangle',.08);}
+  else if(style==='magic'){shotFx(m,RUNE_T[st.tier][2],10);sfx.tone(rand(700,900),.18,'sine',.1);}
+  const top=height(m.x,m.z)+MON_H[m.t]+.1;
+  if(Math.random()>clamp(.5+(st.acc-m.def.def)*.01+boost('acc',style),.08,.95)){splat(m.x,top,m.z,'0','#3a6ae0');if(style==='magic')gainXp('magic',SPELL_XP[st.tier]);return;}
+  const dmg=Math.min(m.hp,randi(1,Math.max(1,Math.round(st.max*(1+boost('dmg',style))))));
+  m.hp-=dmg;splat(m.x,top,m.z,String(dmg),'#c81818');if(MELEE.includes(style))sfx.chop();
+  for(const [sk,x] of combatXp(style,dmg,st))gainXp(sk,x);
+  if(m.hp<=0)killMonster(m);
+}
+// What a monster can drop besides coins: seeds, runes, essence and arrows of its tier, and now and then a curio.
+const monDrops=t=>[[CROPS[t].seed,1/6,1,2],['rune_essence',1/8,2,5],[runeId(t),1/10,2,6],[arrowId(Math.max(0,t-1)),1/12,3,8],['ancient_coin',1/30,1,2],['clue_scroll',1/250,1,1]];
+function killMonster(m){
+  const d=m.def,at={x:m.x,z:m.z};m.die();stopAction();
+  state.stats.kills[d.id]=(state.stats.kills[d.id]||0)+1;
+  msg(`You defeat the ${esc(d.name.toLowerCase())}.`,'m-green');
+  lootAt('coins',randi(...d.coins),at);
+  for(const [id,p,lo,hi] of monDrops(m.t))if(chance(p))lootAt(id,randi(lo,hi),at);
+}
+// Loot goes in the pack with AUTO or a focus timer (or the bank once the pack is full); by hand it lands on the ground.
+function lootAt(id,q,at){
+  if(at&&!state.settings.auto&&!focusing()){dropFloor(id,q,at.x+rand(-.4,.4),at.z+rand(-.4,.4));return;}
+  if(!addItem(id,q))bankAdd(id,q);if(id!=='coins')msg(`You get ${q>1?q.toLocaleString():art(ITEMS[id].name)} ${esc(ITEMS[id].name.toLowerCase())}.`);updateHud();
+}
+function monsterHit(m){
+  const blk=level('block')+toolIdx('block')*4;
+  if(Math.random()>clamp(.45+(m.def.atk-blk)*.01,.05,.9)){splat(player.x,player.y+2.3,player.z,'0','#3a6ae0');return;}
+  hurt(Math.max(1,Math.round(randi(1,m.def.max)*(1-toolIdx('block')*.04))));
+}
+let foodWarned=false;
+function hurt(dmg){
+  state.hp=Math.max(0,state.hp-dmg);splat(player.x,player.y+2.3,player.z,String(dmg),'#c81818');updateHud();
+  if(state.hp<=0){knockedOut();return;}
+  if(state.settings.autoEat&&state.hp<=maxHp()*.5)eatFood(true);
+}
+function knockedOut(){
+  stopAction();state.hp=maxHp();
+  if(inMine())leaveMine(true);
+  player.x=CHEST.x+1.4;player.z=CHEST.z+1.6;snapCam();puff(player.x,player.y+1,player.z,'#ffffff');
+  msg("You're knocked out! You wake up by the bank chest, feeling much better. Bring food next time: cooked fish or crops.",'m-red');
+  banner('Knocked out!','You wake up by the bank chest.');native({type:'haptic',style:'medium'});updateHud();
+}
+// Food heals in a fight: cooked fish or farm crops, from your pack or bank. It eats the smallest that heals what's missing.
+function eatFood(auto){
+  const need=maxHp()-state.hp;if(need<=0)return false;
+  const fs=Object.keys(ITEMS).filter(id=>ITEMS[id].heal&&countOwned(id)>0).sort((a,b)=>ITEMS[a].heal-ITEMS[b].heal);
+  if(!fs.length){if(auto&&!foodWarned){foodWarned=true;msg("You're out of food! Cook some fish or grow some crops to heal in fights.",'m-red');}else if(!auto)msg('You have no food.');return false;}
+  const id=fs.find(f=>ITEMS[f].heal>=need)||fs[fs.length-1];consume(id,1,false);foodWarned=false;
+  state.hp=Math.min(maxHp(),state.hp+ITEMS[id].heal);msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${ITEMS[id].heal} health.`,'m-green');
+  updateHud();if(activeTab==='bank')renderBank();return true;
+}
+
+/* ================= RATIDLE PRO: THIEVING ================= */
+const thiefChance=e=>clamp(.55+(level('thieving')-thiefLvl(e))*.012+toolTier('thieving').b+boost('thief','thieving')+boost('luck','thieving'),.05,.97);
+const thiefName=e=>e.kind==='trader'?'Hazel':e.name;
+function startThieve(e,quiet){
+  if(needPro('thieving',quiet))return false;
+  if(e.kind==='npc'&&(!npcs.includes(e)||e.under!==inMine()))return false;
+  player.action={type:'thieve',ent:e,timer:0,stun:0,started:false};player.stuck=0;return true;
+}
+function doThieve(a){
+  const e=a.ent,L=thiefLvl(e),nm=esc(thiefName(e));
+  if(Math.random()>thiefChance(e)){a.stun=3;msg(`${nm} catches you with your paw in their pocket! You're stunned.`,'m-red');
+    for(let i=0;i<8;i++){const an=i/8*Math.PI*2;spawnPart(player.x+Math.cos(an)*.4,player.y+2.4,player.z+Math.sin(an)*.4,'#ffe040',Math.cos(an)*.6,.3,Math.sin(an)*.6,1.2,0);}
+    hurt(randi(1,1+Math.floor(L/12)));return;}
+  const coins=Math.max(1,Math.round(randi(1+Math.floor(L/4),3+Math.floor(L*.7))*(1+boost('loot','thieving'))));
+  lootAt('coins',coins,null);state.stats.stolen+=coins;sfx.coins();
+  msg(`You pick ${nm}'s pocket and get ${coins.toLocaleString()} coins.`);
+  // Villagers carry things from their trade, travellers carry seeds, and Hazel carries treasure.
+  const isle=ISLANDS[e.isle||state.island],t=isle.tiers[isle.tiers.length-1];
+  if(e.kind==='trader'){if(chance(.15))lootAt('ancient_coin',randi(1,3),null);if(chance(.1))lootAt(runeId(t),randi(2,5),null);if(chance(.04))lootAt(ORE_T[t][0]+'_'+JEWEL[t],1,null);}
+  else if(e.trav){if(chance(.25))lootAt(CROPS[ISLAND_ORDER.indexOf(e.isle)].seed,randi(1,2),null);}
+  else if(chance(.2)){const sk=npcSkill(e.isle,e.j),w=Object.keys(isle.trees).sort((x,y)=>TREES[y].tier-TREES[x].tier)[0];
+    lootAt(sk==='woodcutting'?TREES[w].item:sk==='mining'?ORE_T[t][0]+'_ore':sk==='fishing'?'raw_'+FISH_T[t][0]:sk==='cooking'?'cooked_'+FISH_T[t][0]:ORE_T[t][0]+'_'+JEWEL[t],1,null);}
+  gainXp('thieving',8+L*1.8);
+}
+
+/* ================= RATIDLE PRO: FARMING ================= */
+const plural=n=>/o$/.test(n)?n+'es':n+'s';
+function bestSeed(){for(let t=5;t>=0;t--)if(level('farming')>=CROPS[t].lvl&&countOwned(CROPS[t].seed)>0)return t;return -1;}
+function farmAct(i,op,t){if(needPro('farming'))return;player.action={type:'farm',idx:i,op,t,timer:0};player.stuck=0;}
+function doFarm(a){
+  const isle=state.island,arr=state.farm[isle]||(state.farm[isle]=[null,null,null]),p=arr[a.idx];
+  if(a.op==='harvest'){
+    if(patchStage(p)!=='ripe'){msg(p?`The ${esc(CROPS[p.t].name.toLowerCase())} isn't ready yet. It needs about ${clock(growMs(p)-(Date.now()-p.at))} more.`:'There is nothing growing here.');return;}
+    const c=CROPS[p.t],q=randi(3,5)+(chance(boost('luck','farming'))?1:0),sd=randi(1,2);
+    bankAdd(c.id,q);bankAdd(c.seed,sd);arr[a.idx]=null;state.stats.got[c.id]=(state.stats.got[c.id]||0)+q;sfx.item();
+    msg(`You harvest ${q} ${esc(plural(c.name.toLowerCase()))} and save ${sd} seed${sd>1?'s':''}. They go to your bank.`,'m-green');gainXp('farming',c.xp*q);
+  }else{
+    if(p){msg('Something is already growing there.');return;}
+    const t=a.t??bestSeed();if(t<0){msg("You don't have any seeds you can plant. Buy some in the Shop, or find them on monsters and travellers.");return;}
+    const c=CROPS[t];if(level('farming')<c.lvl){msg(`You need Farming level ${c.lvl} to plant ${c.name.toLowerCase()}.`);return;}
+    if(countOwned(c.seed)<1){msg(`You have no ${esc(c.name.toLowerCase())} seeds.`);return;}
+    consume(c.seed,1,true);arr[a.idx]={t,at:Date.now()};puff(FARM_SPOTS[a.idx].x,height(FARM_SPOTS[a.idx].x,FARM_SPOTS[a.idx].z)+.4,FARM_SPOTS[a.idx].z,'#8a6a42');
+    msg(`You plant ${art(c.name)} ${esc(c.name.toLowerCase())} seed. It will be ready in about ${clock(growMs(arr[a.idx]))}.`);gainXp('farming',c.plantXp);
+  }
+  buildPatch(a.idx);save();if(activeTab==='bank')renderBank();
+}
+// AUTO buys a few seeds from the store when it has none, if there's the gold for them.
+function autoBuySeed(){for(let t=5;t>=0;t--){const c=CROPS[t];if(level('farming')<c.lvl||gpTotal()<c.price*3+20)continue;
+  if(!spend(c.price*3))return -1;bankAdd(c.seed,3);msg(`AUTO buys 3 ${esc(c.name.toLowerCase())} seeds from the store for ${c.price*3} gp.`,'m-blue');return t;}return -1;}
+
+/* ================= RATIDLE PRO: AGILITY ================= */
+const agiChance=()=>clamp(.8+(level('agility')-ISLE_BASE[state.island])*.008+toolTier('agility').b,.6,.99);
+const moveMul=()=>PRO.pro?1+boost('move')+toolIdx('agility')*.01:1;
+function agiFxText(o){
+  const who=o.skills?o.skills.map(s=>SKILLS[s].name).join(' & '):null,pc=Math.round(o.amt*100)+'%';
+  switch(o.kind){
+    case 'speed':return who?`${who} ${pc} faster`:`Every skill ${pc} faster`;
+    case 'xp':return who?`+${pc} ${who} XP`:`+${pc} XP in every skill`;
+    case 'move':return `You walk and run ${pc} faster`;
+    case 'thief':return `+${pc} pickpocket success`;
+    case 'hp':return `+${o.amt} max health`;
+    case 'acc':return `+${pc} combat accuracy`;
+    case 'dmg':return `+${pc} ${who} damage`;
+    case 'loot':return `+${pc} stolen loot`;}
+  return '';
+}
+const agiAfford=o=>gpTotal()>=o.gp&&Object.entries(o.items).every(([id,n])=>(state.bank[id]||0)>=n);
+const agiCostHtml=o=>[`<span class="${gpTotal()>=o.gp?'ok':'no'}">${o.gp.toLocaleString()} gp</span>`,
+  ...Object.entries(o.items).map(([id,n])=>`<span class="${(state.bank[id]||0)>=n?'ok':'no'}">${n} ${esc(ITEMS[id].name.toLowerCase())}</span>`)].join(' · ');
+function openAgility(){
+  const isle=state.island,opts=AGILITY[isle],cur=state.agility[isle],L=ISLE_BASE[isle],lv=level('agility')>=L;
+  const body=`<p style="margin-top:0">Build the ${esc(I.name)} course one of three ways. Running it trains Agility, and its bonus works on every isle.${cur!=null?` You built the <b>${esc(opts[cur].name)}</b>; building another replaces it.`:''}</p>
+    <div class="list">${opts.map((o,i)=>`<div class="card ${cur===i?'here':''}"><div class="meta"><div class="nm">${esc(o.name)}</div><div class="sub">${esc(agiFxText(o))}</div><div class="sub">${agiCostHtml(o)}</div></div>
+      ${cur===i?'<span class="sub">Built</span>':`<button class="btn sm go" data-agi="${i}" ${agiAfford(o)&&lv&&!locked('agility')&&!focusing()?'':'disabled'}>Build</button>`}</div>`).join('')}</div>
+    <p class="hint"><span class="${lv?'ok':'no'}">Needs Agility ${L}.</span> Gold comes from your bank and pack; resources must be in your bank.</p>`;
+  modal(`${I.name} agility course`,body,[...(cur!=null&&!focusing()?[{label:'Run the course',cls:'go',fn:()=>startAgility()}]:[]),{label:'Close'}]);
+  $('#md-body').querySelectorAll('[data-agi]').forEach(b=>b.onclick=()=>buildCourse(+b.dataset.agi));
+}
+function buildCourse(i){
+  if(needPro('agility'))return;const isle=state.island,o=AGILITY[isle][i];
+  if(level('agility')<ISLE_BASE[isle]){msg(`You need Agility level ${ISLE_BASE[isle]} to build a course on ${esc(I.name)}.`);return;}
+  if(!agiAfford(o)){msg("You don't have the gold and banked resources for that course.");return;}
+  if(!spend(o.gp))return;
+  for(const [id,n] of Object.entries(o.items)){state.bank[id]-=n;if(state.bank[id]<=0)delete state.bank[id];}
+  state.agility[isle]=i;buildAgi();puff(AGI.x,height(AGI.x,AGI.z)+1,AGI.z,'#d8c8a0');sfx.chop();$('#modal').hidden=true;
+  msg(`You build the ${esc(o.name.toLowerCase())} course on ${esc(I.name)}. ${esc(agiFxText(o))}, on every isle.`,'m-green');banner('Course built!',`${o.name} · ${agiFxText(o)}`);
+  save();renderTab();
+}
+function startAgility(quiet){
+  if(needPro('agility',quiet))return false;
+  if(!onIsle()){if(!quiet)msg('The agility course is up top.');return false;}
+  if(!agiBuilt()){if(!quiet)openAgility();return false;}
+  if(level('agility')<ISLE_BASE[state.island]){if(!quiet)msg(`You need Agility level ${ISLE_BASE[state.island]} to run the ${esc(I.name)} course.`);return false;}
+  let i0=0,bd=1e9;for(let i=0;i<4;i++){const p=agiWay(i),d=Math.hypot(p.x-player.x,p.z-player.z);if(d<bd){bd=d;i0=i;}}
+  player.action={type:'agility',i:i0,n:0,fails:0,seg:-1,t:0,started:false};player.stuck=0;return true;
+}
+function updateAgility(a,dt){
+  const look=AGI_LOOK[state.agility[state.island]];if(look==null){stopAction();return;}
+  if(a.seg<0){const p=agiWay(a.i);
+    if(stepToward(p.x,p.z,dt)||player.stuck>1.5){a.seg=0;a.from={x:player.x,z:player.z};a.t=0;a.i=(a.i+1)%4;if(!a.started){a.started=true;msg(`You start the ${esc(AGILITY[state.island][state.agility[state.island]].name.toLowerCase())} course.`);}}
+    return;}
+  const q=agiWay(a.i),len=Math.hypot(q.x-a.from.x,q.z-a.from.z)||1;a.t+=dt*SPEED*.7*moveMul()/len;const k=Math.min(1,a.t);
+  player.x=lerp(a.from.x,q.x,k);player.z=lerp(a.from.z,q.z,k);player.faceT=Math.atan2(q.x-a.from.x,q.z-a.from.z);
+  player.anim=look==='beam'?'balance':'walk';
+  player.hop=look==='beam'?Math.min(.55,k*5*.55,(1-k)*5*.55):look==='stone'?Math.abs(Math.sin(k*Math.PI*4))*.45:Math.abs(Math.sin(k*Math.PI*2))*.65;
+  if(k<1)return;
+  a.n++;a.from={x:q.x,z:q.z};a.t=0;a.i=(a.i+1)%4;
+  if(Math.random()>agiChance()){a.fails++;msg('You slip and stumble off the obstacle.','m-red');hurt(1);if(player.action!==a)return;}
+  if(a.n%4===0){const o=AGILITY[state.island][state.agility[state.island]];
+    gainXp('agility',AGI_XP[state.island]*Math.max(.2,1-a.fails*.25));state.stats.laps++;msg(`You finish a lap of the ${esc(o.name.toLowerCase())} course.`);a.fails=0;}
+}
+
+/* ================= RATIDLE PRO: CRAFTING ================= */
+const craftCycle=r=>CYCLE[r.skill]/speedFor(r.skill,r.t)/(1+boost('speed',r.skill));
+const craftable=r=>Math.min(...r.inputs.map(([id,n])=>Math.floor(countOwned(id)/n)));
+const craftName=r=>ITEMS[r.out[0]].name+(r.skill==='runecrafting'?'s':'');
+const needsText=r=>r.inputs.map(([id,n])=>`${n} ${esc(ITEMS[id].name.toLowerCase())}`).join(' and ');
+function startCraft(r,quiet){
+  if(needPro(r.pro||r.skill,quiet))return false;
+  if(level(r.skill)<r.lvl){if(!quiet)msg(`You need ${SKILLS[r.skill].name} level ${r.lvl} to make ${esc(craftName(r).toLowerCase())}.`);return false;}
+  if(craftable(r)<1){if(!quiet)msg(`You need ${needsText(r)} to make ${esc(craftName(r).toLowerCase())}.`);return false;}
+  if(r.station&&!onIsle()){if(!quiet)msg(`The ${esc(STATIONS[r.station].name.toLowerCase())} is up top.`);return false;}
+  player.action={type:'craft',recipe:r,skill:r.skill,ent:r.station?STATIONS[r.station]:null,timer:0,hit:false,started:false};player.stuck=0;return true;
+}
+function doCraft(a){
+  const r=a.recipe;if(craftable(r)<1){msg(`You have run out of materials for ${esc(craftName(r).toLowerCase())}.`);stopAction();return;}
+  for(const [id,n] of r.inputs)consume(id,n,false);
+  let q=r.out[1];if(r.skill==='runecrafting')q*=1+Math.floor((level('runecrafting')-r.lvl)/25);
+  bankAdd(r.out[0],q);state.stats.made[r.out[0]]=(state.stats.made[r.out[0]]||0)+q;
+  const nm=esc(ITEMS[r.out[0]].name.toLowerCase());
+  if(r.verb==='Smith'){sfx.clink();msg(`You smith ${q} ${nm}. They go to your bank.`);}
+  else if(r.verb==='Fletch'){sfx.item();msg(`You fletch ${q} ${nm}. They go to your bank.`);}
+  else if(r.verb==='Brew'){sfx.sizzle();msg(`You brew ${art(nm)} ${nm}. It goes to your bank.`);}
+  else if(r.verb==='Craft'){sfx.tone(rand(600,700),.25,'sine',.1);msg(`You bind the essence into ${q} ${nm}${q>1?'s':''}.`);}
+  else{sfx.tone(rand(900,1100),.3,'sine',.1);msg(`You enchant the jewellery: ${nm}.`);}
+  gainXp(r.skill,r.xp);if(activeTab==='bank')renderBank();
+}
+// What can be made at a station right now, best first.
+function craftOpts(station){
+  const o=[];for(const r of ALL_CRAFTS.filter(r=>r.station===station).reverse())
+    if(!locked(r.pro||r.skill)&&level(r.skill)>=r.lvl&&craftable(r)>=1)o.push({a:r.verb,t:craftName(r),tc:'c-item',fn:()=>startCraft(r)});
+  if(!o.length&&station!=='furnace'){const sk=station==='alch'?'alchemy':station==='fletch'?'fletching':'runecrafting';
+    o.push({a:{alch:'Brew',fletch:'Fletch',altar:'Craft-rune'}[station],t:STATIONS[station].name,fn:()=>{if(needPro(sk))return;const r=bestCraft(sk);
+      if(r&&craftable(r)>=1)startCraft(r);else msg(r?`You need ${needsText(r)} to make ${esc(craftName(r).toLowerCase())}.`:`Your ${SKILLS[sk].name} level is too low for anything here.`);}});}
+  return o;
+}
+const craftList=sk=>CRAFTS[sk==='magic'?'magic':sk];
+// How AUTO gets more of an item on this isle: gather it, or make it from things it can get. Null if it can't.
+function itemSource(id,depth=0){
+  if(depth>3)return null;
+  for(const k in I.trees)if(TREES[k].item===id)return level('woodcutting')>=TREES[k].lvl?{sk:'woodcutting'}:null;
+  if(id==='rune_essence')return{sk:'mining'};
+  const rock=ROCKS.find(r=>r.item===id);if(rock)return I.tiers.includes(rock.tier)&&level('mining')>=rock.lvl?{sk:'mining'}:null;
+  const fish=FISHES.find(f=>f.item===id);if(fish)return I.tiers.includes(fish.tier)&&level('fishing')>=fish.lvl?{sk:'fishing'}:null;
+  const c=ALL_CRAFTS.find(r=>r.out[0]===id);
+  if(c)return level(c.skill)>=c.lvl&&c.inputs.every(([i2,n])=>countOwned(i2)>=n||itemSource(i2,depth+1))?{craft:c}:null;
+  const j=RECIPES.smithing.find(r=>r.output===id);
+  if(j)return level('smithing')>=j.lvl&&(countOwned(j.input)>=j.n||itemSource(j.input,depth+1))?{proc:j}:null;
+  return null;
+}
+function bestCraft(sk){const L=level(sk);
+  for(let t=5;t>=0;t--){const r=craftList(sk)[t];if(r.lvl<=L&&(craftable(r)>=1||r.inputs.every(([id,n])=>countOwned(id)>=n||itemSource(id))))return r;}
+  return null;}
+// The first thing in a recipe's chain that can be made now: the recipe itself, or something it needs.
+function firstCraftable(r,depth=0){
+  if(r.proc)return countOwned(r.proc.input)>=r.proc.n?r:null;
+  if(craftable(r)>=1)return r;if(depth>3)return null;
+  for(const [id] of r.inputs){const s=itemSource(id);if(!s)continue;const c=s.craft?firstCraftable(s.craft,depth+1):s.proc?firstCraftable({proc:s.proc},depth+1):null;if(c)return c;}
+  return null;
+}
+function neededBy(r,id,depth=0){if(depth>3)return false;
+  return r.inputs.some(([i2])=>{if(i2===id)return true;const s=itemSource(i2);return s&&s.craft?neededBy(s.craft,id,depth+1):s&&s.proc?s.proc.input===id:false;});}
+function goCraft(c){if(inMine()){exitMine();return true;}return c.proc?startProcess('smithing',c.proc,true):startCraft(c,true);}
+function goBankAuto(){if(inMine()){if(chuteOpen())goChute();else exitMine();}else goBank();return true;}
+// Gather one particular item: the nearest tree, rock or spot that gives it.
+function gatherItem(id){
+  const src=itemSource(id);if(!src||!src.sk)return false;const sk=src.sk;
+  if((sk==='mining')!==inMine()){if(inMine())exitMine();else goMine();return true;}
+  let best=null,bd=1e9;
+  for(const e of gatherEnts()){if(e.skill!==sk||e.def.item!==id||!e.available()||e.def.lvl>level(sk))continue;const d=Math.hypot(e.x-player.x,e.z-player.z);if(d<bd){bd=d;best=e;}}
+  if(best)startGather(best,true);
+  return true;   // nothing free right now: wait for it to grow back
+}
+// AUTO for anything made at a station: fill the pack with what's needed, then make it all in one go, the way smithing
+// works. It sticks with one input until the pack is full, so it never runs back and forth between the mine and the shore.
+let autoGoal=null;
+function autoMake(r,depth=0){
+  if(r.proc){const j=r.proc;if(countOwned(j.input)>=j.n&&(!invFree()||(state.bank[j.input]||0)>=j.n))return goCraft(r);autoGoal=j.input;return gatherItem(j.input);}
+  if(!invFree()){autoGoal=null;const c=firstCraftable(r);return c?goCraft(c):goBankAuto();}
+  if(autoGoal&&neededBy(r,autoGoal)&&gatherItem(autoGoal))return true;
+  autoGoal=null;
+  const k=craftable(r),banked=r.inputs.every(([id,n])=>(ITEMS[id].stack?countOwned(id):state.bank[id]||0)>=n);
+  if(k>=1&&banked)return goCraft(r);
+  const want=r.inputs.map(([id,n])=>({id,have:countOwned(id)/n})).sort((a,b)=>a.have-b.have);
+  for(const w of want){const s=itemSource(w.id);if(!s)continue;
+    if(s.sk){autoGoal=w.id;if(gatherItem(w.id))return true;autoGoal=null;continue;}
+    if(depth<3)return autoMake(s.craft||{proc:s.proc},depth+1);}
+  if(k>=1)return goCraft(r);
+  return false;
+}
+
+/* ================= RATIDLE PRO: POTIONS ================= */
+const activeBuffs=()=>POTIONS.filter(p=>state.buffs[p.id]>Date.now());
+// Agility courses and potions add to the same bonuses as villagers.
+function proBoost(kind,sk){
+  if(!PRO.pro)return 0;let t=0;
+  for(const isle of ISLAND_ORDER){const i=state.agility[isle];if(i==null)continue;const o=AGILITY[isle][i];if(o.kind===kind&&(!o.skills||o.skills.includes(sk)))t+=o.amt;}
+  const now=Date.now();for(const p of POTIONS)if(p.fx[kind]&&state.buffs[p.id]>now)t+=p.fx[kind];
+  return t;
+}
+function drinkPotion(id,auto){
+  if(needPro('alchemy'))return;const p=POTIONS[ITEMS[id].potion];if(countOwned(id)<1)return;
+  consume(id,1,false);const now=Date.now();state.buffs[id]=Math.min(now+POTION_MAX_MS,Math.max(now,state.buffs[id]||0)+p.min*60000);
+  msg(`${auto?'AUTO drinks':'You drink'} the ${esc(p.name.toLowerCase())}. ${esc(p.say)} for ${clock(state.buffs[id]-now)}.`,'m-green');
+  sfx.item();updateHud();if(activeTab==='bank')renderBank();if(activeTab==='skill')renderSkill();
+}
+// AUTO drinks a potion once its last one wears off, but only one that helps what it's doing.
+function potionHelps(p,act){const k=Object.keys(p.fx);return k.some(x=>x==='speed'||x==='xp'||x==='luck')||(COMBAT.includes(act)&&k.some(x=>x==='acc'||x==='dmg'))||(act==='thieving'&&k.some(x=>x==='thief'||x==='loot'));}
+function autoDrinkPotions(){
+  if(!PRO.pro||!state.settings.autoDrink)return;const now=Date.now(),act=activity();
+  for(const p of POTIONS)if(!(state.buffs[p.id]>now)&&countOwned(p.id)>0&&potionHelps(p,act))drinkPotion(p.id,true);
+}
+
+/* ================= RATIDLE PRO: AUTO ================= */
+const proStuckAt={};
+function proStuck(key,text){const now=Date.now();if(proStuckAt[key]&&now-proStuckAt[key]<60000)return;proStuckAt[key]=now;msg(text,'m-red');}
+function autoPro(act){
+  if(locked(act)){proStuck('locked',`${SKILLS[act].name} is part of RatIdle Pro. AUTO is waiting.`);return;}
+  if(inCabin()){player.action={type:'door'};return;}
+  const style=act==='magic'&&state.settings.magicMode==='enchant'?null:COMBAT.includes(act)?act:null;
+  if(style){
+    if(inMine()){exitMine();return;}
+    if(!invFree()){goBank();return;}
+    if(!fightStats(style)){proStuck('ammo'+style,noAmmoText(style));return;}
+    const cb=cbLevel(),alive=monsters.filter(m=>m.available());if(!alive.length)return;
+    const tiers=[...new Set(alive.map(m=>m.t))].sort((a,b)=>a-b),fit=tiers.filter(t=>MONSTERS[t].lvl<=cb+3),tt=fit.length?fit[fit.length-1]:tiers[0];
+    let best=null,bd=1e9;for(const m of alive){if(m.t!==tt)continue;const d=Math.hypot(m.x-player.x,m.z-player.z);if(d<bd){bd=d;best=m;}}
+    if(best)startFight(best,true);return;}
+  if(act==='thieving'){
+    if(!invFree()){goBankAuto();return;}
+    const L=level('thieving'),c=npcs.filter(e=>e.under===inMine()).concat(onIsle()?[TRADER]:[]);let best=null,bs=-1;
+    for(const e of c){const lv=thiefLvl(e);if(lv>L+5)continue;const sc=thiefChance(e)*(8+lv*1.8)/(1+Math.hypot(e.x-player.x,e.z-player.z)/25);if(sc>bs){bs=sc;best=e;}}
+    if(best)startThieve(best,true);else if(inMine())exitMine();else proStuck('thv'+state.island,`Nobody on ${esc(I.name)} is easy enough to pickpocket at your Thieving level.`);return;}
+  if(act==='agility'){
+    if(inMine()){exitMine();return;}
+    if(!agiBuilt()){proStuck('agi'+state.island,`There's no agility course on ${esc(I.name)} yet. ${IS_TOUCH?'Tap':'Click'} the course site east of the workshop to build one.`);return;}
+    if(level('agility')<ISLE_BASE[state.island]){proStuck('agilv'+state.island,`You need Agility ${ISLE_BASE[state.island]} to run the ${esc(I.name)} course.`);return;}
+    startAgility(true);return;}
+  if(act==='farming'){
+    if(inMine()){exitMine();return;}
+    const arr=state.farm[state.island]||[];
+    for(let i=0;i<3;i++)if(patchStage(arr[i])==='ripe'){farmAct(i,'harvest');return;}
+    for(let i=0;i<3;i++)if(!arr[i]){let t=bestSeed();if(t<0)t=autoBuySeed();
+      if(t<0){proStuck('seed','You have no seeds and not enough gold to buy any. Buy seeds in the Shop.');return;}farmAct(i,'plant',t);return;}
+    const s=FARM_SPOTS[1];if(Math.hypot(player.x-s.x,player.z-s.z-2.2)>2.5)walkTo(s.x,s.z+2.2);return;}
+  const r=bestCraft(act);
+  if(!r||autoMake(r)===false)proStuck('craft'+act+state.island,act==='magic'?`AUTO can't get jewellery and runes to enchant here. Smithing makes jewellery and Runecrafting makes runes.`
+    :`There's nothing on ${esc(I.name)} AUTO can make ${SKILLS[act].name.toLowerCase()} supplies from at your levels.`);
+}
+
+/* ================= RATIDLE PRO: CATCH-UP ================= */
+// Time away for a Pro skill, worked out from rates rather than played out.
+function gatherDefFor(id){return gatherEnts().map(e=>e.def).find(d=>d.item===id)||(id==='rune_essence'?ESSENCE_ROCK:null);}
+function itemCost(id,depth=0){
+  const s=itemSource(id);if(!s||depth>3)return null;
+  if(s.sk){const d=gatherDefFor(id);return d?cycleFor(s.sk,d)/gatherChance(s.sk,d)/.55:null;}
+  if(s.proc){const c=itemCost(s.proc.input,depth+1);return c==null?null:c*s.proc.n+CYCLE.smithing;}
+  const c=craftCost(s.craft,depth+1);return c==null?null:c/s.craft.out[1];
+}
+function craftCost(r,depth=0){let s=craftCycle(r);for(const [id,n] of r.inputs){const c=itemCost(id,depth);if(c==null)return null;s+=n*c;}return s;}
+// Give the XP and items for making n of a recipe from scratch, through its whole chain.
+function simulateCraft(r,n,xp,depth=0){
+  for(const [id,need] of r.inputs){const s=itemSource(id),q=n*need;if(!s||depth>3)continue;
+    if(s.sk){const d=gatherDefFor(id);if(d){xp[s.sk]=(xp[s.sk]||0)+q*d.xp;state.stats.got[id]=(state.stats.got[id]||0)+q;}}
+    else if(s.proc){const d=gatherDefFor(s.proc.input);if(d)xp.mining=(xp.mining||0)+q*s.proc.n*d.xp;xp.smithing=(xp.smithing||0)+q*s.proc.xp;}
+    else simulateCraft(s.craft,Math.ceil(q/s.craft.out[1]),xp,depth+1);}
+  xp[r.skill]=(xp[r.skill]||0)+n*r.xp;
+}
+function catchUpPro(act,secs,when){
+  if(locked(act))return;
+  const xp={};let line='',n=0;const xm=s=>state.settings.xpRate*(1+(state.focus&&state.focus.skill===s?FOCUS_SKILL_BONUS-1:0))*(1+boost('xp',s));
+  const style=act==='magic'&&state.settings.magicMode==='enchant'?null:COMBAT.includes(act)?act:null;
+  if(style){
+    const st=fightStats(style);if(!st||!monsters.length)return;
+    const tiers=[...new Set(monsters.map(m=>m.t))],fit=tiers.filter(t=>MONSTERS[t].lvl<=cbLevel()+3),m=MONSTERS[fit.length?Math.max(...fit):Math.min(...tiers)];
+    const hit=clamp(.5+(st.acc-m.def)*.01+boost('acc',style),.08,.95),dps=hit*(1+st.max)/2/st.cyc;
+    n=Math.floor(secs*.7/(m.hp/dps+4));if(st.ammo)n=Math.min(n,Math.floor(countOwned(st.ammo)/(m.hp/((1+st.max)/2)/hit+1)));if(n<1)return;
+    const shots=Math.ceil(n*m.hp/((1+st.max)/2)/hit);if(st.ammo)consume(st.ammo,Math.min(shots,countOwned(st.ammo)),true);
+    for(const [sk,x] of combatXp(style,n*m.hp,st))xp[sk]=(xp[sk]||0)+x;
+    const coins=Math.round(n*(m.coins[0]+m.coins[1])/2);state.gold+=coins;state.stats.kills[m.id]=(state.stats.kills[m.id]||0)+n;
+    line=`you defeated ${n.toLocaleString()} ${esc(m.name.toLowerCase())}${n>1?'s':''} for ${coins.toLocaleString()} gp`;
+  }else if(act==='thieving'){
+    const c=npcs.filter(e=>!e.under).concat([TRADER]).filter(e=>thiefLvl(e)<=level('thieving')+5);if(!c.length)return;
+    const e=c.sort((a,b)=>thiefChance(b)*(8+thiefLvl(b)*1.8)-thiefChance(a)*(8+thiefLvl(a)*1.8))[0],L=thiefLvl(e);
+    n=Math.floor(secs/2.6*thiefChance(e)*.8);if(n<1)return;
+    const coins=Math.round(n*(4+L*.95/2)*(1+boost('loot','thieving')));state.gold+=coins;state.stats.stolen+=coins;xp.thieving=n*(8+L*1.8);
+    line=`you picked ${n.toLocaleString()} pockets for ${coins.toLocaleString()} gp`;
+  }else if(act==='agility'){
+    if(!agiBuilt()||level('agility')<ISLE_BASE[state.island])return;
+    n=Math.floor(secs/(4*3.3*1.41/(SPEED*.7*moveMul()))*.8);if(n<1)return;
+    xp.agility=n*AGI_XP[state.island]*(agiChance()*.25+.75);state.stats.laps+=n;line=`you ran ${n.toLocaleString()} laps of the course`;
+  }else if(act==='farming'){
+    let t=bestSeed();if(t<0)return;const c=CROPS[t];n=Math.floor(secs/(c.grow/(1+boost('speed','farming'))+20))*3;if(n<1)return;
+    const q=n*4;bankAdd(c.id,q);bankAdd(c.seed,Math.floor(n*.5));xp.farming=n*c.plantXp+q*c.xp;state.stats.got[c.id]=(state.stats.got[c.id]||0)+q;
+    line=`you grew ${q.toLocaleString()} ${esc(plural(c.name.toLowerCase()))}`;
+  }else{
+    const r=bestCraft(act);if(!r)return;const cost=craftCost(r);if(!cost)return;n=Math.floor(secs*.3/cost);if(n<1)return;
+    simulateCraft(r,n,xp);let q=n*r.out[1];if(r.skill==='runecrafting')q*=1+Math.floor((level('runecrafting')-r.lvl)/25);
+    bankAdd(r.out[0],q);state.stats.made[r.out[0]]=(state.stats.made[r.out[0]]||0)+q;
+    line=`you made ${q.toLocaleString()} ${esc(ITEMS[r.out[0]].name.toLowerCase())}${act==='runecrafting'?'s':''}, banked`;
+  }
+  const before={};SKILL_ORDER.forEach(s=>before[s]=level(s));
+  for(const sk in xp)state.skills[sk]=Math.min(200e6,state.skills[sk]+xp[sk]*xm(sk));
+  msg(`${when}, ${line}.`,'m-green');
+  for(const s of SKILL_ORDER){const a=level(s);if(a>before[s])levelUp(s,before[s],a);}
+  refreshTools();updateHud();if(activeTab==='bank')renderBank();if(activeTab==='skill')renderSkill();
+}
+
+/* ================= RATIDLE PRO: UI ================= */
+function proPrompt(what){
+  if(titleOpen)return;const price=PRO.price?` for ${esc(PRO.price)}`:'';
+  modal('RatIdle Pro',`<p style="margin-top:0">${what?`<b>${esc(what)}</b> is`:'That is'} part of <b>RatIdle Pro</b>, a one-time purchase${price} that unlocks twelve more skills:</p>
+    <p><b>Combat:</b> ${COMBAT.map(k=>SKILLS[k].name).join(', ')}.<br><b>And:</b> ${PRO_SKILLS.filter(k=>!COMBAT.includes(k)).map(k=>SKILLS[k].name).join(', ')}.</p>
+    <p class="hint">Your six base skills and everything you already have stay free.${PRO.available?'':' Get RatIdle Pro in the RatIdle app for iPhone and iPad.'}</p>`,
+    [...(PRO.available?[{label:'Unlock Pro',cls:'go',fn:()=>native({type:'pro',action:'paywall'})},{label:'Restore',fn:()=>native({type:'pro',action:'restore'})}]:[]),{label:'Not now'}]);
+}
+function needPro(sk,quiet){if(!locked(sk))return false;if(!quiet)proPrompt(SKILLS[sk].name);return true;}
+// What each Pro skill shows in the Skills tab.
+function proRows(sk){
+  const L=level(sk),tbl=rows=>`<table class="trees">${rows.map(([n,l,c])=>`<tr class="${l!=null&&L<l?'lock':''}"><td class="n">${n}</td><td>${l!=null?'Lv '+l:''}</td><td class="r">${c}</td></tr>`).join('')}</table>`;
+  if(COMBAT.includes(sk)){
+    const gear=[['Weapon',toolName('attack')],['Gauntlets',toolName('strength')],['Armour',toolName('block')],['Amulet',toolName('health')],['Bow',toolName('ranged')],['Staff',toolName('magic')]];
+    let extra='';
+    if(sk==='ranged')extra=tbl(ORE_T.map((o,t)=>[esc(ITEMS[arrowId(t)].name),LV[t],`${short(countOwned(arrowId(t)))} owned`]));
+    else if(sk==='magic')extra=tbl(RUNE_T.map((r,t)=>[esc(r[3]),LV[t],`${short(countOwned(runeId(t)))} runes`]))+tbl(CRAFTS.magic.map(r=>[esc(ITEMS[r.out[0]].name),r.lvl,`${short(state.stats.made[r.out[0]]||0)} made`]));
+    return `<div class="row"><span>Combat level</span><span class="v">${cbLevel()}</span></div><div class="row"><span>Health</span><span class="v">${Math.ceil(state.hp)} / ${maxHp()}</span></div>
+      ${gear.map(([a,b])=>`<div class="row"><span>${a}</span><span class="v">${esc(b)}</span></div>`).join('')}
+      <p class="sect">Monsters</p>${tbl(MONSTERS.map(m=>[esc(m.name),m.lvl,`${short(state.stats.kills[m.id]||0)} defeated`]))}${extra}`;}
+  if(sk==='alchemy')return tbl(POTIONS.map((p,t)=>[esc(p.name),LV[t],`${short(state.stats.made[p.id]||0)} made`]))
+    +`<p class="sect">Active potions</p>${activeBuffs().map(p=>`<div class="row"><span>${esc(p.name)}</span><span class="v">${clock(state.buffs[p.id]-Date.now())}</span></div>`).join('')||'<p class="hint">None. Drink one from your pack or bank.</p>'}`;
+  if(sk==='farming')return tbl(CROPS.map(c=>[esc(c.name),c.lvl,`${short(state.stats.got[c.id]||0)} grown`]))
+    +`<p class="sect">${esc(I.name)} patches</p>${[0,1,2].map(i=>{const p=patchState(i),st=patchStage(p);return `<div class="row"><span>Patch ${i+1}</span><span class="v">${!p?'Empty':st==='ripe'?esc(CROPS[p.t].name)+': ready':esc(CROPS[p.t].name)+': '+clock(growMs(p)-(Date.now()-p.at))}</span></div>`;}).join('')}`;
+  if(sk==='agility')return tbl(ISLAND_ORDER.map(k=>[esc(ISLANDS[k].name),ISLE_BASE[k],state.agility[k]!=null?esc(AGILITY[k][state.agility[k]].name):'Not built']))
+    +`<p class="sect">Course bonuses</p>${ISLAND_ORDER.filter(k=>state.agility[k]!=null).map(k=>`<p class="hint" style="text-align:left;margin:2px 0">${esc(agiFxText(AGILITY[k][state.agility[k]]))}</p>`).join('')||'<p class="hint">Build a course on any isle for its bonus.</p>'}
+      <div class="row"><span>Laps run</span><span class="v">${state.stats.laps.toLocaleString()}</span></div>`;
+  if(sk==='thieving'){const here=npcs.concat([TRADER]);
+    return tbl(here.map(e=>[esc(thiefName(e)),thiefLvl(e),`${Math.round(thiefChance(e)*100)}% success`]))+`<div class="row"><span>Coins stolen</span><span class="v">${state.stats.stolen.toLocaleString()}</span></div>`;}
+  return tbl(craftList(sk).map(r=>[esc(craftName(r)),r.lvl,`${short(state.stats.made[r.out[0]]||0)} made`]));
+}
+const PRO_HINT={
+  attack:'Fight monsters in the arena north of the bank. Attack makes your melee hits land more often, and unlocks better swords.',
+  strength:'Strength makes your melee hits harder, and unlocks better gauntlets.',
+  block:'Block makes monsters miss you more and hit you softer, and unlocks better armour.',
+  health:'Health is your hit points. Every hit you land trains a little; fighting in the Health style trains it most. Food heals you in a fight.',
+  ranged:'Shoot monsters from a distance with your shortbow. Each shot uses an arrow from Fletching.',
+  magic:'Cast spells at monsters with runes from Runecrafting, or switch to enchanting in the Focus tab to enchant jewellery for Hazel.',
+  alchemy:'Brew potions at the alchemy table from ore and raw fish of the same tier. Potions buff every skill for a while.',
+  farming:'Plant seeds in the three farm patches by the hut. Crops grow in real time and heal you in fights. Buy seeds in the Shop.',
+  agility:'Build each isle\'s agility course one of three ways with gold and banked resources. Run it to train Agility; every course built gives a bonus on every isle.',
+  thieving:'Pickpocket the traveller, the villagers and Hazel. Harder targets pay more. Better gloves, Fortune and Shadow potions and some courses raise your success.',
+  runecrafting:'Mine rune essence from the pale essence rocks in the mine, then bind it into runes at the runic altar. Higher levels make more runes per essence.',
+  fletching:'Smith arrowtips from ore at the furnace, then fletch them onto logs of the same tier at the fletching bench for arrows.',
+};
+
+const FOCUS_HINT={attack:'Fights monsters in the arena, training Attack and Health.',strength:'Fights monsters in the arena, training Strength and Health.',
+  block:'Fights monsters in the arena, training Block and Health.',health:'Fights monsters, sharing XP between Attack, Strength, Block and Health.',
+  ranged:'Shoots monsters in the arena with your best arrows. Fletch arrows first.',magic:'Casts spells at monsters in the arena with your runes.',
+  enchant:'Smiths jewellery and crafts runes, then enchants the jewellery. Pays 25% more gold.',
+  alchemy:'Gathers ore and fish, then brews potions. Pays 25% more gold.',farming:'Plants, tends and harvests your farm patches.',
+  agility:"Runs laps of this isle's agility course.",thieving:'Pickpockets the best target it can find.',
+  runecrafting:'Mines rune essence, then crafts runes at the altar. Pays 25% more gold.',fletching:'Chops logs and smiths arrowtips, then fletches arrows. Pays 25% more gold.'};
+const focusHint=sk=>(sk==='magic'&&state.settings.magicMode==='enchant'?FOCUS_HINT.enchant:FOCUS_HINT[sk])+(locked(sk)?' <b>RatIdle Pro</b>':'');
+function eatItem(id){
+  if(needPro('health'))return;if(state.hp>=maxHp()){msg("You're already at full health.");return;}
+  consume(id,1,false);state.hp=Math.min(maxHp(),state.hp+ITEMS[id].heal);msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${ITEMS[id].heal} health.`,'m-green');updateHud();
+}
+// Health comes back slowly on its own: one point every six seconds.
+function regenHp(){
+  if(!PRO.pro||state.hp==null)return;const mx=maxHp();
+  if(state.hp<mx){const was=Math.ceil(state.hp);state.hp=Math.min(mx,state.hp+.25/6);if(Math.ceil(state.hp)!==was)updateHud();}else if(state.hp>mx)state.hp=mx;
+}
+function proUnlocks(sk,from,to){
+  const hit=l=>l>from&&l<=to;let u=[];
+  if(sk==='ranged'){u=ORE_T.filter((o,t)=>hit(LV[t])).map(o=>o[1]);return u.length?`You can now shoot ${u.join(', ')} arrows.`:'';}
+  if(sk==='magic'){u=RUNE_T.filter((r,t)=>hit(LV[t])).map(r=>r[3]);return u.length?`You can now cast ${u.join(', ')}.`:'';}
+  if(sk==='farming'){u=CROPS.filter(c=>hit(c.lvl)).map(c=>c.name);return u.length?`You can now grow ${u.join(', ')}.`:'';}
+  if(sk==='agility'){u=ISLAND_ORDER.filter(k=>k!=='greenhaven'&&hit(ISLE_BASE[k])).map(k=>ISLANDS[k].name);return u.length?`You can now build and run the ${u.join(', ')} course.`:'';}
+  if(!CRAFTS[sk])return '';
+  u=CRAFTS[sk].filter(r=>hit(r.lvl)).map(craftName);return u.length?`You can now make ${u.join(', ')}.`:'';
+}
+// The traveller: one on every isle, wandering about. Easy to pickpocket, and often carrying seeds.
+function spawnTraveller(){
+  const isle=state.island,[name,line]=TRAVELLERS[isle],m=buildRatNpc(isle,5,'trav');
+  const e={kind:'npc',trav:true,isle,j:5,name,line,x:0,z:8,r:.4,reach:1.5,g:m.g,head:m.head,legs:m.legs,face:0,walkT:0,wait:rand(3,12),miner:false};
+  tagEnt(m.g,e);npcPlace(e,false);const p=npcTarget(e);e.x=p.x;e.z=p.z;e.t=npcTarget(e);m.g.position.set(e.x,npcY(e),e.z);npcs.push(e);
+}
+function travTarget(e){
+  for(let k=0;k<30;k++){const a=rand(0,Math.PI*2),r=rand(6,22),x=Math.cos(a)*r,z=Math.sin(a)*r;
+    if(height(x,z)<WATER_Y+.4||NO_SPAWN.some(o=>Math.hypot(o.x-x,o.z-z)<o.r))continue;
+    if(obstacles.some(o=>o!==e&&o.kind!=='npc'&&Math.hypot(o.x-x,o.z-z)<(o.r||0)+.8)||trees.some(o=>o.r>0&&Math.hypot(o.x-x,o.z-z)<o.r+.6))continue;
+    return{x,z,lx:0,lz:0};}
+  return{x:e.x,z:e.z,lx:0,lz:0};
+}
+function talkTraveller(e){
+  modal(e.name,`<p style="margin-top:0">"${esc(e.line)}"</p><p class="hint">A traveller visiting ${esc(ISLANDS[e.isle].name)}. Pickpocketing needs Thieving ${thiefLvl(e)}.</p>`,[{label:'Bye'}]);
+  msg(`${esc(e.name)}: "${esc(e.line)}"`);
+}
+// Icons for the Pro skills and their items. Returns false for anything it doesn't draw.
+function proIcon(g,spec){
+  const k=spec[0],s=spec[1];
+  const sword=(x,y,rot)=>{g.save();g.translate(x,y);g.rotate(rot);g.fillStyle='#d0d4dc';g.beginPath();g.moveTo(-2.5,-11);g.lineTo(0,-15);g.lineTo(2.5,-11);g.lineTo(2.5,4);g.lineTo(-2.5,4);g.closePath();g.fill();g.stroke();
+    g.fillStyle='#c8a040';g.fillRect(-7,4,14,3);g.strokeRect(-7,4,14,3);g.fillStyle='#6b4a2b';g.fillRect(-1.5,7,3,7);g.strokeRect(-1.5,7,3,7);g.restore();};
+  const flask=(x,y,col)=>{g.fillStyle=col;g.beginPath();g.arc(x,y+4,9,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#dceefa';g.fillRect(x-3,y-9,6,6);g.strokeRect(x-3,y-9,6,6);
+    g.fillStyle='#a87a44';g.fillRect(x-4,y-12,8,4);g.strokeRect(x-4,y-12,8,4);g.fillStyle='rgba(255,255,255,.6)';g.fillRect(x-5,y,3,3);};
+  const runeStone=col=>{g.fillStyle='#b8b0a0';g.beginPath();g.moveTo(9,6);g.lineTo(27,5);g.lineTo(30,24);g.lineTo(18,29);g.lineTo(6,24);g.closePath();g.fill();g.stroke();
+    g.strokeStyle=col;g.lineWidth=2.5;g.beginPath();g.moveTo(18,10);g.lineTo(18,24);g.moveTo(13,13);g.lineTo(23,21);g.moveTo(23,13);g.lineTo(13,21);g.stroke();g.lineWidth=1.5;g.strokeStyle='#000';};
+  const arrow=(x,y,rot,tip)=>{g.save();g.translate(x,y);g.rotate(rot);g.fillStyle='#8a6a3a';g.fillRect(-1,-9,2,19);g.fillStyle=tip;g.beginPath();g.moveTo(0,-15);g.lineTo(3.5,-9);g.lineTo(-3.5,-9);g.closePath();g.fill();g.stroke();
+    g.fillStyle='#f0f0f0';g.beginPath();g.moveTo(-1,6);g.lineTo(-4,12);g.lineTo(-1,10);g.closePath();g.moveTo(1,6);g.lineTo(4,12);g.lineTo(1,10);g.closePath();g.fill();g.restore();};
+  const star=(x,y,r,col)=>{g.fillStyle=col;g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;g.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);}g.closePath();g.fill();g.stroke();};
+  if(k==='skill'){
+    if(s==='attack')sword(18,17,.75);
+    else if(s==='strength'){g.fillStyle='#9a9aa4';g.beginPath();g.rect(8,11,18,14);g.fill();g.stroke();g.fillStyle='#b8b8c0';g.beginPath();g.rect(24,14,5,8);g.fill();g.stroke();
+      g.strokeStyle='#4a4a52';for(let i=0;i<3;i++){g.beginPath();g.moveTo(8,15+i*4);g.lineTo(18,15+i*4);g.stroke();}g.strokeStyle='#000';g.fillStyle='#6b4a2b';g.fillRect(10,25,12,5);g.strokeRect(10,25,12,5);}
+    else if(s==='block'){g.fillStyle='#3a5aa8';g.beginPath();g.moveTo(18,4);g.quadraticCurveTo(26,7,30,7);g.lineTo(29,18);g.quadraticCurveTo(26,26,18,30);g.quadraticCurveTo(10,26,7,18);g.lineTo(6,7);g.quadraticCurveTo(10,7,18,4);g.fill();g.stroke();
+      g.fillStyle='#e0e0e8';g.fillRect(16,8,4,19);g.fillRect(10,13,16,4);}
+    else if(s==='health'){g.fillStyle='#e03a4a';g.beginPath();g.moveTo(18,29);g.bezierCurveTo(4,19,4,8,12,7);g.bezierCurveTo(16,7,18,10,18,12);g.bezierCurveTo(18,10,20,7,24,7);g.bezierCurveTo(32,8,32,19,18,29);g.fill();g.stroke();g.fillStyle='rgba(255,255,255,.6)';g.fillRect(10,11,3,4);}
+    else if(s==='ranged'){g.strokeStyle='#000';g.lineWidth=4.5;g.beginPath();g.arc(8,16,13,-1.15,1.15);g.stroke();g.strokeStyle='#8a5a2e';g.lineWidth=2.5;g.beginPath();g.arc(8,16,13,-1.15,1.15);g.stroke();
+      g.lineWidth=1;g.strokeStyle='#e8e8e8';g.beginPath();g.moveTo(13,4);g.lineTo(13,28);g.stroke();g.lineWidth=1.5;g.strokeStyle='#000';arrow(20,16,Math.PI/2,'#b8b8c0');}
+    else if(s==='magic'){g.save();g.translate(17,17);g.rotate(.6);g.fillStyle='#6b4a2b';g.fillRect(-1.5,-6,3,20);g.strokeRect(-1.5,-6,3,20);g.restore();g.fillStyle='#8a5ad0';g.beginPath();g.arc(12,9,5,0,Math.PI*2);g.fill();g.stroke();
+      g.fillStyle='#ffe070';[[24,6],[28,14],[6,22]].forEach(([x,y])=>{g.fillRect(x-1,y-3,2,6);g.fillRect(x-3,y-1,6,2);});}
+    else if(s==='alchemy')flask(18,15,'#2ac0a0');
+    else if(s==='farming'){g.fillStyle='#7a5530';g.beginPath();g.ellipse(18,25,13,5,0,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#3e9a2e';g.fillRect(17,11,2,12);
+      g.beginPath();g.ellipse(12,13,6,3,-.5,0,Math.PI*2);g.fill();g.stroke();g.beginPath();g.ellipse(24,10,6,3,.5,0,Math.PI*2);g.fill();g.stroke();}
+    else if(s==='agility'){g.fillStyle='#8a5a2e';g.beginPath();g.moveTo(10,6);g.lineTo(18,6);g.lineTo(18,20);g.lineTo(30,22);g.lineTo(30,28);g.lineTo(8,28);g.closePath();g.fill();g.stroke();
+      g.fillStyle='#f4f4f0';g.beginPath();g.moveTo(18,10);g.lineTo(30,5);g.lineTo(27,10);g.lineTo(31,11);g.lineTo(18,16);g.closePath();g.fill();g.stroke();}
+    else if(s==='thieving'){g.fillStyle='#8a6a3a';g.beginPath();g.moveTo(14,10);g.quadraticCurveTo(4,28,18,29);g.quadraticCurveTo(32,28,22,10);g.closePath();g.fill();g.stroke();
+      g.fillStyle='#c8a040';g.fillRect(13,7,10,4);g.strokeRect(13,7,10,4);g.fillStyle='#ffcf40';g.beginPath();g.arc(18,21,4,0,Math.PI*2);g.fill();g.stroke();}
+    else if(s==='runecrafting')runeStone('#9a5ae0');
+    else if(s==='fletching'){arrow(14,18,.6,'#b8b8c0');g.fillStyle='#f4f0e0';g.beginPath();g.ellipse(25,13,4,10,.5,0,Math.PI*2);g.fill();g.stroke();g.strokeStyle='#a89a80';g.beginPath();g.moveTo(21,22);g.lineTo(29,4);g.stroke();g.strokeStyle='#000';}
+    else return false;
+    return true;}
+  if(k==='arrow'){[0,1,2].forEach(i=>arrow(11+i*6,18-i,.7,s));return true;}
+  if(k==='tips'){[[10,13],[20,10],[15,23],[26,21]].forEach(([x,y])=>{g.fillStyle=s;g.beginPath();g.moveTo(x,y-5);g.lineTo(x+4,y+3);g.lineTo(x-4,y+3);g.closePath();g.fill();g.stroke();});return true;}
+  if(k==='rune'){runeStone(s);return true;}
+  if(k==='essence'){g.fillStyle='#e8e0ff';g.beginPath();g.moveTo(8,20);g.lineTo(14,7);g.lineTo(26,9);g.lineTo(30,21);g.lineTo(19,28);g.closePath();g.fill();g.stroke();
+    g.fillStyle='rgba(150,110,255,.55)';g.fillRect(15,12,5,5);g.fillRect(21,18,4,4);return true;}
+  if(k==='potion'){flask(18,15,s);return true;}
+  if(k==='cseed'){g.fillStyle='#e8d8b0';g.beginPath();g.rect(9,6,18,22);g.fill();g.stroke();g.fillStyle=s;g.beginPath();g.arc(18,18,5,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#4a9a3a';g.fillRect(17,8,2,5);return true;}
+  if(k==='crop'){const c=s,id=spec[2];
+    if(id==='potato'){g.fillStyle=c;g.beginPath();g.ellipse(18,17,12,8,.3,0,Math.PI*2);g.fill();g.stroke();g.fillStyle='#8a6a3a';[[13,15],[20,13],[23,19]].forEach(([x,y])=>g.fillRect(x,y,2,2));}
+    else if(id==='onion'){g.fillStyle=c;g.beginPath();g.ellipse(18,20,10,9,0,0,Math.PI*2);g.fill();g.stroke();g.strokeStyle='#4a9a3a';g.lineWidth=2;g.beginPath();g.moveTo(18,11);g.lineTo(16,3);g.moveTo(18,11);g.lineTo(21,4);g.stroke();g.lineWidth=1.5;g.strokeStyle='#000';}
+    else if(id==='corn'){g.fillStyle='#4a9a3a';g.beginPath();g.ellipse(18,18,8,14,.5,0,Math.PI*2);g.fill();g.stroke();g.fillStyle=c;g.beginPath();g.ellipse(19,16,5,11,.5,0,Math.PI*2);g.fill();g.stroke();}
+    else if(id==='starfruit')star(18,17,13,c);
+    else{g.fillStyle=c;g.beginPath();g.arc(18,18,10,0,Math.PI*2);g.fill();g.stroke();
+      if(id==='tomato')star(18,9,5,'#3e8a2e');else{g.strokeStyle='#3e7a2a';g.beginPath();g.arc(18,18,6,.5,2.8);g.moveTo(18,9);g.lineTo(18,27);g.stroke();g.strokeStyle='#000';}}
+    g.fillStyle='rgba(255,255,255,.5)';g.fillRect(12,13,2,3);return true;}
+  return false;
+}
+
 /* ================= STATE APPLY / CATCH-UP ================= */
 function applyState(s){
   stopAction();cancelPlacing();closeMenu();
-  state=sanitize(s,{allowFocus:true});player.restMode=null;player.resting=false;restPrev=null;restSpot=null;
+  state=sanitize(s,{allowFocus:true});player.restMode=null;player.resting=false;restPrev=null;restSpot=null;autoGoal=null;
   buildIsland(state.island);
+  if(state.hp==null||state.hp<=0||state.hp>maxHp())state.hp=maxHp();
   player.x=state.pos&&isFinite(state.pos.x)?state.pos.x:0;player.z=state.pos&&isFinite(state.pos.z)?state.pos.z:3;
   if(inCabin()){const R=room();if(Math.abs(player.x-INT.x)>R.w){player.x=INT.x;player.z=INT.z;}}
   else if(Math.hypot(player.x,player.z)>ISLAND)player.x=0,player.z=3;
@@ -3106,6 +4063,7 @@ function flushGains(){if(gainTimer||!gainQueue.length)return;
 function catchUp(secs,label){
   if(!state.settings.auto||secs<30||inCabin()&&activity()!=='cooking')return;
   secs=Math.min(secs,8*3600);
+  if(proSkill(activity())){const h=Math.floor(secs/3600),m=Math.floor(secs%3600/60);catchUpPro(activity(),secs,`${label||'While you were away'} (${h?h+'h ':''}${m}m)`);return;}
   const act=activity(),gs=GATHER_OF[act],d=bestGatherDef(gs);if(!d)return;
   let focusSecs=0;if(state.focus)focusSecs=clamp((state.focus.end-(Date.now()-secs*1000))/1000,0,secs);
   const rate=gatherChance(gs,d)/cycleFor(gs,d)*.55*(1+boost('double',gs));let n=Math.floor(secs*rate);if(n<1)return;
@@ -3143,6 +4101,7 @@ function frame(){
   if(!titleOpen)updatePlayer(dt);animatePlayer(dt,T);updatePet(dt,T);
   for(let i=trees.length-1;i>=0;i--)trees[i]&&trees[i].update(dt,T);
   for(const r of rocks)r.update(dt,T);
+  if(onIsle())for(const m of monsters)m.update(dt,T);
   if(!inCabin())updateNpcs(dt,T);
   if(onIsle()){for(const s of spots)s.update(dt,T);updateShips(dt,T);}
   updateFloor(dt,T);
@@ -3152,6 +4111,7 @@ function frame(){
   else{updateWater(T);if(fireFlames[0]){fireFlames[0].scale.set(1+Math.sin(T*13)*.08,1+Math.sin(T*9)*.18,1);fireFlames[1].scale.y=1+Math.sin(T*15+1)*.22;fireLight.intensity=1+Math.sin(T*11)*.15+Math.sin(T*23)*.08;}
     if(furnaceGlow)furnaceGlow.material.color.copy(furnaceGlow.userData.base).multiplyScalar(.88+Math.sin(T*6)*.12);
     if(hazel)hazel.rotation.y=Math.sin(T*.4)*.3;
+    if(alchBrew)alchBrew.material.color.setHSL(.45+Math.sin(T*2)*.05,.7,.55);if(altarGem){altarGem.rotation.y=T*1.5;altarGem.position.y=2.5+Math.sin(T*2)*.1;}
     if(boatMesh){boatMesh.position.y=WATER_Y+Math.sin(T*1.6)*.06;boatMesh.rotation.z=Math.sin(T*1.1)*.04;}
     if(chimney&&chance(dt*3)&&state.island==='greenhaven'){const p=new THREE.Vector3();chimney.getWorldPosition(p);spawnPart(p.x,p.y+.9,p.z,'#d8d8d8',rand(-.2,.2),.9,rand(-.2,.2),2.2,-.05);}}
   for(const c of clouds){c.position.x+=dt*.9;if(c.position.x>110)c.position.x=-110;}
@@ -3160,7 +4120,7 @@ function frame(){
     if(placing&&mouse.in&&!IS_TOUCH){const p=pick(mouse.x,mouse.y);if(p&&p.point)placing.ghost.position.set(INT.x+Math.round((p.point.x-INT.x)*4)/4,0,INT.z+Math.round((p.point.z-INT.z)*4)/4);}
     if(hoverUI)setHover(hoverUI);else if(mouse.in&&!menuOpen&&!drag&&!IS_TOUCH&&!placing)setHover(player.restMode?[{a:'Stand up'}]:worldOpts(mouse.x,mouse.y));else if(!menuOpen)setHover(null);
   }
-  if((slowTick+=dt)>.25){slowTick=0;if(!titleOpen)updateFocusHud();
+  if((slowTick+=dt)>.25){slowTick=0;if(!titleOpen){updateFocusHud();updatePatches();regenHp();}
 if(activeTab==='bank'){const n=nearChest();if(n!==lastNear){lastNear=n;renderBank();}}}
   drawMinimap();updateNameTag();renderer.render(scene,camera);requestAnimationFrame(frame);
 }

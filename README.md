@@ -18,6 +18,10 @@ No keys are committed. `web/index.html` holds the placeholder `'__FIREBASE_API_K
 | GitHub repository secret | `FIREBASE_SERVICE_ACCOUNT` | `firebase.yml`: the JSON key of `github-firestore-deploy@ratidle-be.iam.gserviceaccount.com`, which can only manage Firestore rules and indexes |
 | EAS environment variable (sensitive) | `FIREBASE_API_KEY` | EAS cloud builds of the app |
 | `mobile/.env.local` (git-ignored) | `FIREBASE_API_KEY=...` | local app builds |
+| EAS environment variables | `EXPO_PUBLIC_REVENUECAT_IOS_KEY`, `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | release builds of the app (RevenueCat public SDK keys, `appl_…` / `goog_…`) |
+
+Development builds use RevenueCat's Test Store key, which is committed in `mobile/src/purchases.ts` because it can't be used to
+charge anyone. A release build without a RevenueCat key hides RatIdle Pro.
 
 Without a key the game still runs and simply hides cloud saves. The API key is restricted to the Identity Toolkit, Secure
 Token and Firestore APIs. It still ends up in the page players download, as every Firebase web key does; access is

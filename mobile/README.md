@@ -7,7 +7,7 @@ pixel font, into `src/gameHtml.ts`. The app then shows that file in a full-scree
 
 ## Run it
 
-This app uses native modules (WebView, AsyncStorage, haptics, notifications, screen orientation), so it needs a development build.
+This app uses native modules (WebView, AsyncStorage, haptics, notifications, screen orientation, RevenueCat), so it needs a development build.
 Expo Go won't run it.
 
 ```bash
@@ -59,6 +59,45 @@ materials. Gold buys outfits, cabin
 upgrades and wood styles for the cabin walls and floor. Logs build furniture inside the cabin, in the wood they came
 from.
 
+## RatIdle Pro (RevenueCat)
+
+RatIdle Pro is one $4.99 lifetime purchase (the `ratidle_pro` entitlement). The six base skills and everything that was
+in the game before stay free. Pro adds twelve skills:
+
+- **Combat:** Attack, Strength, Block, Health, Ranged and Magic. Every isle has an arena north of the bank with
+  monsters of its two tiers. Swords, gauntlets, armour, amulets, shortbows and staffs upgrade by themselves as each
+  level rises. Ranged shoots arrows; Magic casts spells with runes. Cooked fish and crops heal you, and being knocked
+  out just sends you back to the bank chest.
+- **Alchemy:** ore and raw fish of the same tier make a potion at the alchemy table. Potions buff every skill for 5 to
+  20 minutes; AUTO drinks the ones that help what it's doing.
+- **Farming:** three patches by each isle's hut. Crops grow in real time and heal you in fights. Seeds come from the
+  Shop, monsters, travellers and harvests.
+- **Agility:** each isle's course can be built one of three ways, for gold and resources from the bank. Running it trains
+  Agility, and every built course gives a passive bonus on every isle.
+- **Thieving:** pickpocket the traveller, the villagers or Hazel. Harder targets pay more. Gloves, Fortune and Shadow
+  potions and some courses raise your success rate.
+- **Runecrafting:** rune essence from the essence rocks in each mine becomes runes at the runic altar. Runes power
+  combat spells, or Magic's non-combat side: enchanting jewellery for Hazel.
+- **Fletching:** ore smithed into arrowtips at the furnace, fletched onto logs at the fletching bench, makes arrows.
+
+Without Pro, the arena, stations, patches and courses are still on every isle; using them shows the paywall. The
+website can't sell Pro, so there it says to get the app.
+
+Options › RatIdle Pro opens RevenueCat's paywall, the Customer Center (restores and refund requests) or a restore.
+The app holds the entitlement and passes it to the game, see `src/purchases.ts`; the game reads it as `PRO.pro`.
+
+Development builds use the Test Store, so purchases are simulated. Release builds read the store keys from the
+`EXPO_PUBLIC_REVENUECAT_IOS_KEY` / `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` EAS environment variables. RevenueCat makes a
+release build crash if it's given a Test Store key, so `__DEV__` decides which key is used.
+
+Set up in the RevenueCat dashboard:
+
+1. Product `lifetime`: a non-consumable at $4.99. Create it in App Store Connect too for the real store.
+2. Entitlement `ratidle_pro`, with the product attached.
+3. Offering `default`, marked current, with one Lifetime package (`$rc_lifetime`). Its price is shown in the game.
+   Debug builds warn in the console if it's missing.
+4. A paywall for that offering (Paywalls tab), and the Customer Center (Pro plan and up).
+
 ## How the app and game talk
 
 The game posts messages through `window.ReactNativeWebView`:
@@ -68,6 +107,8 @@ The game posts messages through `window.ReactNativeWebView`:
 - `deleteSlot` removes a slot. `export` opens the system Share sheet with the save's JSON.
 - `haptic` triggers a buzz on long-press, level-ups and rare drops.
 - `focusStart` / `focusEnd` schedule and cancel the "Focus complete" notification.
+- `pro` (`paywall`, `manage` or `restore`) opens the paywall, the Customer Center, or restores purchases. The app sends
+  the entitlement back through `window.__RATIDLE_PRO__` on load and `window.__ratidlePro(state, message)` on changes.
 
 When the app goes to the background, it asks the game to save, and tells it (`__ratidleActive`) so cloud saves pause until
 the app is back in front.

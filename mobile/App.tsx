@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Notifications from 'expo-notifications';
 import { GAME_HTML } from './src/gameHtml';
+import { initPurchases, onProChange, proState, restorePurchases, showCustomerCenter, showPaywall, type PurchaseOutcome } from './src/purchases';
 
 const LEGACY_KEY = 'timberline-save-v1';
 const SLOTS = [1, 2, 3] as const;
@@ -60,7 +61,8 @@ type GameMessage =
   | { type: 'export'; json: string; name: string }
   | { type: 'haptic'; style: 'medium' | 'success' }
   | { type: 'focusStart'; endsAt: number; minutes: number }
-  | { type: 'focusEnd'; completed: boolean };
+  | { type: 'focusEnd'; completed: boolean }
+  | { type: 'pro'; action: 'paywall' | 'manage' | 'restore' };
 
 const validSlot = (n: unknown): n is number => typeof n === 'number' && (SLOTS as readonly number[]).includes(n);
 const parseSave = (raw: string | null) => {
@@ -81,6 +83,17 @@ export default function App() {
   const cloudRef = useRef<unknown>(null);
   const [ready, setReady] = useState(false);
   const [gameKey, setGameKey] = useState(0);
+
+  // RatIdle Pro: the game reads the entitlement from window.__RATIDLE_PRO__ on load and window.__ratidlePro on changes.
+  const sendPro = useCallback((text: string | null = null) => {
+    webRef.current?.injectJavaScript(`window.__ratidlePro && window.__ratidlePro(${JSON.stringify(proState())}, ${JSON.stringify(text)}); true;`);
+  }, []);
+
+  useEffect(() => {
+    initPurchases().catch(e => console.warn('RevenueCat setup failed', e));
+    const off = onProChange(() => sendPro());
+    return () => { off(); };
+  }, [sendPro]);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
@@ -150,11 +163,15 @@ export default function App() {
       scheduleFocusNotification(msg.endsAt, msg.minutes).catch(() => {});
     } else if (msg.type === 'focusEnd') {
       cancelFocusNotification().catch(() => {});
+    } else if (msg.type === 'pro') {
+      const run: Record<string, () => Promise<PurchaseOutcome>> = { paywall: showPaywall, manage: showCustomerCenter, restore: restorePurchases };
+      const fn = run[msg.action];
+      if (fn) fn().then(r => sendPro(r.text)).catch(() => sendPro('Something went wrong with the store. Please try again.'));
     } else if (msg.type === 'haptic') {
       if (msg.style === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
-  }, []);
+  }, [sendPro]);
 
   return (
     <SafeAreaProvider>
@@ -171,8 +188,9 @@ export default function App() {
             style={styles.web}
             source={{ html: GAME_HTML, baseUrl: 'https://ratidle.local/' }}
             originWhitelist={['*']}
-            injectedJavaScriptBeforeContentLoaded={`window.__RATIDLE_SLOTS__ = ${JSON.stringify(slotsRef.current)}; window.__RATIDLE_CLOUD__ = ${JSON.stringify(cloudRef.current)}; true;`}
+            injectedJavaScriptBeforeContentLoaded={`window.__RATIDLE_SLOTS__ = ${JSON.stringify(slotsRef.current)}; window.__RATIDLE_CLOUD__ = ${JSON.stringify(cloudRef.current)}; window.__RATIDLE_PRO__ = ${JSON.stringify(proState())}; true;`}
             onMessage={onMessage}
+            onLoadEnd={() => sendPro()}
             // iOS can kill a backgrounded web view; reload it with the latest saves.
             onContentProcessDidTerminate={() => setGameKey(k => k + 1)}
             onRenderProcessGone={() => setGameKey(k => k + 1)}
