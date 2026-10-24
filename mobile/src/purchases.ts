@@ -20,6 +20,9 @@ const API_KEY = __DEV__
 export type ProState = { available: boolean; pro: boolean; price: string | null };
 
 let configured = false;
+// The cloud-save account the game is signed in to (verified email only), waiting if the SDK isn't configured yet.
+let appUser: string | null = null;
+let pendingUser: string | null = null;
 let current: ProState = { available: false, pro: false, price: null };
 const listeners = new Set<(s: ProState) => void>();
 
@@ -58,6 +61,31 @@ export async function initPurchases() {
     console.warn('RevenueCat getCustomerInfo failed', e);
   }
   loadPrice().catch(e => console.warn('RevenueCat getOfferings failed', e));
+  if (pendingUser) await setAppUser(pendingUser);
+}
+
+/**
+ * Ties purchases to the player's cloud-save account (their Firebase user ID), so RatIdle Pro bought here also unlocks
+ * on the website and on other devices signed in to that account. A purchase made before signing in moves to the
+ * account. Signing out keeps this device's RevenueCat user, so Pro bought here stays unlocked here.
+ */
+export async function setAppUser(uid: string | null) {
+  if (!uid || uid === appUser) return;
+  if (!configured) {
+    pendingUser = uid;
+    return;
+  }
+  pendingUser = null;
+  try {
+    const { customerInfo } = await Purchases.logIn(uid);
+    appUser = uid;
+    publish(customerInfo);
+    // Make sure this device's App Store purchase is recorded on the account.
+    await Purchases.syncPurchases();
+    publish(await Purchases.getCustomerInfo());
+  } catch (e) {
+    console.warn('RevenueCat logIn failed', e);
+  }
 }
 
 // The lifetime product's price, and in development a warning when the dashboard setup is missing.

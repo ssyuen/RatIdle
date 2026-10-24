@@ -80,8 +80,20 @@ in the game before stay free. Pro adds twelve skills:
   combat spells, or Magic's non-combat side: enchanting jewellery for Hazel.
 - **Fletching:** ore smithed into arrowtips at the furnace, fletched onto logs at the fletching bench, makes arrows.
 
-Without Pro, the arena, stations, patches and courses are still on every isle; using them shows the paywall. The
-website can't sell Pro, so there it says to get the app.
+Without Pro, the arena, stations, patches and courses are still on every isle; using them shows the paywall.
+
+Skills help each other (the Skills tab lists what helps each one and what it helps): Mining helps Smithing save ore,
+Fishing means less burnt food, Cooking makes food heal more, Woodcutting speeds up huts and makes more arrows, Strength
+speeds up chopping and mining, Agility helps Thieving, Thieving haggles better prices, and so on. Some things need a
+second skill: swords, gauntlets, armour and amulets need Smithing at half their level, bows need Fletching and staffs
+need Runecrafting, and every potion needs a farm crop.
+
+**Pro follows the cloud-save account.** Once a player is signed in to cloud saves with a verified email, the app signs
+in to RevenueCat as their Firebase user ID (`setAppUser` in `src/purchases.ts`), so a purchase made on the phone
+belongs to the account. Every device signed in to that account, the website included, asks RevenueCat whether the
+account owns `ratidle_pro` (`syncProAccount` in the game) and unlocks Pro if it does. Without a verified email and
+cloud saves, Pro stays on the device that bought it. The website can't sell Pro: there's no Stripe account linked to
+RevenueCat for Web Billing yet.
 
 Options › RatIdle Pro opens RevenueCat's paywall, the Customer Center (restores and refund requests) or a restore.
 The app holds the entitlement and passes it to the game, see `src/purchases.ts`; the game reads it as `PRO.pro`.

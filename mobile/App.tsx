@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Notifications from 'expo-notifications';
 import { GAME_HTML } from './src/gameHtml';
-import { initPurchases, onProChange, proState, restorePurchases, showCustomerCenter, showPaywall, type PurchaseOutcome } from './src/purchases';
+import { initPurchases, onProChange, proState, restorePurchases, setAppUser, showCustomerCenter, showPaywall, type PurchaseOutcome } from './src/purchases';
 
 const LEGACY_KEY = 'timberline-save-v1';
 const SLOTS = [1, 2, 3] as const;
@@ -62,7 +62,8 @@ type GameMessage =
   | { type: 'haptic'; style: 'medium' | 'success' }
   | { type: 'focusStart'; endsAt: number; minutes: number }
   | { type: 'focusEnd'; completed: boolean }
-  | { type: 'pro'; action: 'paywall' | 'manage' | 'restore' };
+  | { type: 'pro'; action: 'paywall' | 'manage' | 'restore' }
+  | { type: 'proUser'; uid: string | null };
 
 const validSlot = (n: unknown): n is number => typeof n === 'number' && (SLOTS as readonly number[]).includes(n);
 const parseSave = (raw: string | null) => {
@@ -167,6 +168,9 @@ export default function App() {
       const run: Record<string, () => Promise<PurchaseOutcome>> = { paywall: showPaywall, manage: showCustomerCenter, restore: restorePurchases };
       const fn = run[msg.action];
       if (fn) fn().then(r => sendPro(r.text)).catch(() => sendPro('Something went wrong with the store. Please try again.'));
+    } else if (msg.type === 'proUser') {
+      // The verified cloud-save account; RatIdle Pro bought here then belongs to it.
+      if (typeof msg.uid === 'string' && /^[A-Za-z0-9]{6,128}$/.test(msg.uid)) setAppUser(msg.uid).catch(() => {});
     } else if (msg.type === 'haptic') {
       if (msg.style === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});

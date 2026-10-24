@@ -379,24 +379,37 @@ const RN=window.ReactNativeWebView||null;
 const IS_TOUCH=!!RN||!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
 if(IS_TOUCH)document.body.classList.add('touch');
 function native(m){if(RN)try{RN.postMessage(JSON.stringify(m));}catch(e){}}
-// RatIdle Pro is bought through the app store, so it only exists in the app. The app passes the entitlement in as
-// window.__RATIDLE_PRO__ and calls __ratidlePro whenever it changes, with an optional message about a purchase.
+// RatIdle Pro is bought in the app. The app passes its own entitlement in as window.__RATIDLE_PRO__ and calls
+// __ratidlePro whenever it changes, with an optional message about a purchase. Pro also belongs to the player's
+// cloud-save account: on any device signed in to cloud saves with a verified email, the website included, the
+// account's purchase unlocks it (see syncProAccount). PRO.pro is the result: this device's purchase or the account's.
 // Until the app has heard from the store, the last answer it gave is used, so a slow start never locks Pro content.
 const sanePro=p=>{p=p&&typeof p==='object'?p:{};
-  return {available:!!RN&&p.available===true,pro:p.pro===true,price:typeof p.price==='string'?p.price.slice(0,24):null};};
-const PRO_KEY='ratidle-pro';
+  return {available:!!RN&&p.available===true,native:p.pro===true,price:typeof p.price==='string'?p.price.slice(0,24):null};};
+const PRO_KEY='ratidle-pro',PRO_ACCT_KEY='ratidle-pro-account';
 let PRO=sanePro(window.__RATIDLE_PRO__);
-if(RN&&!PRO.available)try{PRO.pro=localStorage.getItem(PRO_KEY)==='1';}catch(e){}
-window.__ratidlePro=(p,text)=>{const was=PRO.pro;PRO=sanePro(p);
-  if(PRO.available)try{localStorage.setItem(PRO_KEY,PRO.pro?'1':'0');}catch(e){}
+if(RN&&!PRO.available)try{PRO.native=localStorage.getItem(PRO_KEY)==='1';}catch(e){}
+// The cloud account's Pro as last checked, {uid, pro}. Kept between visits so a reload doesn't flash locked.
+let accountPro=(()=>{try{const v=JSON.parse(localStorage.getItem(PRO_ACCT_KEY)||'null');return v&&typeof v.uid==='string'?{uid:v.uid.slice(0,128),pro:v.pro===true}:null;}catch(e){return null;}})();
+let cloudReady=false;
+const accountProOk=()=>!!accountPro&&accountPro.pro&&(!cloudReady||proLinked()&&accountPro.uid===cloud.user.uid);
+PRO.pro=PRO.native||accountProOk();
+function applyPro(text){
+  const was=PRO.pro;PRO.pro=PRO.native||accountProOk();
   if(!slot||titleOpen)return;
   if(typeof text==='string'&&text)msg(esc(text.slice(0,200)),PRO.pro?'m-green':'m-blue');
   if(PRO.pro!==was){refreshTools();if(PRO.pro){$('#modal').hidden=true;banner('RatIdle Pro','Twelve new skills unlocked. Thank you!');native({type:'haptic',style:'success'});}}
   if(state.hp==null||state.hp>maxHp())state.hp=maxHp();
-  updateHud();renderTab();};
+  updateHud();renderTab();
+}
+window.__ratidlePro=(p,text)=>{const n=sanePro(p);PRO.available=n.available;PRO.native=n.native;PRO.price=n.price||PRO.price;
+  if(PRO.available)try{localStorage.setItem(PRO_KEY,PRO.native?'1':'0');}catch(e){}
+  applyPro(text);};
 function proStatus(){
-  if(!PRO.pro)return `Unlock twelve more skills (six for combat, plus Alchemy, Farming, Agility, Thieving, Runecrafting and Fletching) with a one-time purchase${PRO.price?` of ${esc(PRO.price)}`:''}.`;
-  return 'You have RatIdle Pro. Thank you!';
+  const acct=CLOUD_ON&&cloud.user?esc(cloud.user.email):'';
+  if(PRO.pro)return `You have RatIdle Pro. Thank you!${!PRO.native&&acct?` It comes with your cloud-save account, ${acct}.`:PRO.available&&!proLinked()?' Sign in to cloud saves with a verified email to use it on the website too.':''}`;
+  if(PRO.available)return `Unlock twelve more skills (six for combat, plus Alchemy, Farming, Agility, Thieving, Runecrafting and Fletching) with a one-time purchase${PRO.price?` of ${esc(PRO.price)}`:''}.`;
+  return `Twelve more skills are part of RatIdle Pro, a one-time purchase in the RatIdle app for iPhone and iPad. ${proLinked()?`Buy it there while signed in to cloud saves as ${acct} and it unlocks here too.`:'Buy it there, then sign in here to cloud saves with the same verified email to play it on the website.'}`;
 }
 // Height of the game area: the full screen when installed to the home screen (see the <head> script), else the window.
 let VH=innerHeight;
@@ -612,7 +625,7 @@ const npcSkill=(isle,j)=>NPC_SKILLS[(ISLAND_ORDER.indexOf(isle)+j)%5];
 const npcEarned=frac=>Math.min(5,Math.floor(frac*5+1e-9));
 // The help a skill gets from villagers of one kind (0 if that villager hasn't moved in).
 function boost(kind,sk){let t=0;for(const isle of ISLAND_ORDER){const k=NPC_KIND[isle];if(k.kind!==kind)continue;
-  for(let j=0;j<(state.npcs[isle]||0);j++)if(npcSkill(isle,j)===sk)t+=k.amt;}return t+proBoost(kind,sk);}
+  for(let j=0;j<(state.npcs[isle]||0);j++)if(npcSkill(isle,j)===sk)t+=k.amt;}return t+proBoost(kind,sk)+synBoost(kind,sk);}
 const SKILL_GOODS={woodcutting:'logs',mining:'ore',fishing:'raw fish',smithing:'jewellery',cooking:'cooked fish'};
 function boostText(isle,j){const sk=npcSkill(isle,j),S=SKILLS[sk].name,{kind,amt}=NPC_KIND[isle],pc=Math.round(amt*100)+'%';
   if(kind==='xp')return `+${pc} ${S} XP`;
@@ -730,7 +743,7 @@ ORE_T.forEach(([id,N,c],t)=>{
 });
 RUNE_T.forEach(([id,N,c,spell],t)=>{ITEMS[runeId(t)]={name:N+' rune',ex:`A rune humming with ${N.toLowerCase()} magic. Cast ${spell} with it (Magic ${LV[t]}), or enchant ${art(ORE_T[t][1])} ${ORE_T[t][1].toLowerCase()} ${JEWEL[t]}.`,
   icon:['rune',c],stack:true,value:[1,2,4,7,12,20][t],kind:'supply',skill:'runecrafting'};});
-POTIONS.forEach((p,t)=>{ITEMS[p.id]={name:p.name,ex:`${p.say} for ${p.min} minutes. Brewed from ${ORE_T[t][1].toLowerCase()} ore and raw ${FISH_T[t][1].toLowerCase()}.`,
+POTIONS.forEach((p,t)=>{ITEMS[p.id]={name:p.name,ex:`${p.say} for ${p.min} minutes. Brewed from ${ORE_T[t][1].toLowerCase()} ore, raw ${FISH_T[t][1].toLowerCase()} and ${art(CROP_T[t][1])} ${CROP_T[t][1].toLowerCase()} from your farm.`,
   icon:['potion',p.col],act:'Drink',potion:t,value:TIER_VAL[t]*10,kind:'supply',skill:'alchemy'};});
 CROPS.forEach(c=>{
   ITEMS[c.id]={name:c.name,ex:`A fresh ${c.name.toLowerCase()} from your farm patch. Heals ${c.heal} health when eaten in a fight.`,icon:['crop',c.col,c.id],value:TIER_VAL[c.t]*2,kind:'raw',heal:c.heal,skill:'farming'};
@@ -742,11 +755,43 @@ const CRAFTS={tips:[],fletching:[],alchemy:[],runecrafting:[],magic:[]};
 ORE_T.forEach(([id],t)=>{
   CRAFTS.tips.push({skill:'smithing',pro:'fletching',t,lvl:LV[t],xp:[12,22,35,50,75,105][t],inputs:[[id+'_ore',1]],out:[tipsId(t),10],station:'furnace',verb:'Smith'});
   CRAFTS.fletching.push({skill:'fletching',t,lvl:LV[t],xp:[20,35,55,80,115,160][t],inputs:[[TREES[TREE_ORDER[t]].item,1],[tipsId(t),10]],out:[arrowId(t),10],station:'fletch',verb:'Fletch'});
-  CRAFTS.alchemy.push({skill:'alchemy',t,lvl:LV[t],xp:[30,50,75,105,145,200][t],inputs:[[id+'_ore',1],['raw_'+FISH_T[t][0],1]],out:[POTIONS[t].id,1],station:'alch',verb:'Brew'});
+  CRAFTS.alchemy.push({skill:'alchemy',t,lvl:LV[t],xp:[30,50,75,105,145,200][t],inputs:[[id+'_ore',1],['raw_'+FISH_T[t][0],1],[CROPS[t].id,1]],out:[POTIONS[t].id,1],station:'alch',verb:'Brew'});
   CRAFTS.runecrafting.push({skill:'runecrafting',t,lvl:LV[t],xp:[6,8,10,13,16,20][t],inputs:[['rune_essence',1]],out:[runeId(t),1],station:'altar',verb:'Craft'});
   CRAFTS.magic.push({skill:'magic',t,lvl:LV[t],xp:[35,60,90,125,170,230][t],inputs:[[id+'_'+JEWEL[t],1],[runeId(t),1]],out:['ench_'+id+'_'+JEWEL[t],1],station:null,verb:'Enchant'});
 });
 const ALL_CRAFTS=Object.values(CRAFTS).flat();
+// Skills help each other. A skill's level above 1 gives `per` (a fraction, or a flat amount) of `kind` to the skills
+// in `to` (or every skill when it's null). The ones without `per` are dependencies, shown in the Skills tab:
+// gear that needs a second skill, potions that need crops, food for fights, villagers for skilling.
+const SYNERGY=[
+  {from:'mining',to:['smithing'],kind:'luck',per:.001,text:'chance to save ore when smithing'},
+  {from:'fishing',to:['cooking'],kind:'luck',per:.001,text:'less burnt food'},
+  {from:'woodcutting',to:['construction'],kind:'speed',per:.002,text:'faster hut building'},
+  {from:'strength',to:['woodcutting','mining'],kind:'speed',per:.001,text:'faster chopping and mining'},
+  {from:'cooking',to:['health'],kind:'heal',per:.005,text:'more healing from food'},
+  {from:'block',to:null,kind:'hp',per:.1,flat:true,text:'max health'},
+  {from:'agility',to:['thieving'],kind:'thief',per:.001,text:'pickpocket success'},
+  {from:'thieving',to:null,kind:'sell',per:.001,text:'better prices from Hazel (haggling)'},
+  {from:'woodcutting',to:['fletching'],kind:'yield',per:.005,text:'more arrows per log'},
+  {from:'fletching',to:['ranged'],kind:'acc',per:.001,text:'Ranged accuracy'},
+  {from:'runecrafting',to:['magic'],kind:'dmg',per:.002,text:'spell damage'},
+  {from:'magic',to:['runecrafting'],kind:'xp',per:.001,text:'Runecrafting XP'},
+  {from:'farming',to:['alchemy'],kind:'duration',per:.005,text:'longer-lasting potions'},
+  {from:'alchemy',to:['farming'],kind:'speed',per:.002,text:'faster-growing crops'},
+  {from:'smithing',to:['attack','strength','block','health'],kind:'gear',text:'forges every sword, gauntlet, armour and amulet: each needs Smithing at half its level'},
+  {from:'fletching',to:['ranged'],kind:'gear',text:'makes every shortbow: each needs Fletching at half its level'},
+  {from:'runecrafting',to:['magic'],kind:'gear',text:'attunes every staff: each needs Runecrafting at half its level'},
+  {from:'farming',to:['alchemy'],kind:'need',text:'grows the crop every potion needs'},
+  {from:'cooking',to:COMBAT,kind:'need',text:'cooks the food that heals you in fights'},
+  {from:'smithing',to:['fletching'],kind:'need',text:'smiths the arrowtips arrows need'},
+  {from:'runecrafting',to:['magic'],kind:'need',text:'crafts the runes every spell and enchantment needs'},
+  {from:'construction',to:['woodcutting','mining','fishing','smithing','cooking'],kind:'need',text:'builds the huts that bring helpful villagers'},
+];
+// Gear for these skills also needs the second skill at half the gear's level.
+const GEAR_NEEDS={attack:'smithing',strength:'smithing',block:'smithing',health:'smithing',ranged:'fletching',magic:'runecrafting'};
+const gearOk=(sk,lvl)=>!GEAR_NEEDS[sk]||level(GEAR_NEEDS[sk])>=Math.ceil(lvl/2);
+function synBoost(kind,sk){let t=0;for(const s of SYNERGY)if(s.kind===kind&&s.per&&(!s.to||s.to.includes(sk))&&!locked(s.from))t+=s.per*(level(s.from)-1);return t;}
+const synValue=s=>{const v=s.per*(level(s.from)-1);return s.flat?'+'+v.toFixed(1):'+'+(v*100).toFixed(1)+'%';};
 // A rock in every mine that gives rune essence at any Mining level.
 const ESSENCE_ROCK={name:'Essence rock',ore:'Rune essence',lvl:1,xp:5,diff:1,item:'rune_essence',tier:0,color:'#d8ccff',respawn:[3,6],essence:true,
   ex:'A pale rock that hums. Mine it for rune essence.'};
@@ -862,7 +907,7 @@ const level=(sk='woodcutting')=>sk==='construction'?1+Math.floor(98*buildAvg()):
 const charLevel=()=>charLevelFor(state.fxp);
 // A prestiged gathering skill has already reached 99, so it keeps the islands it opened.
 const gatherLevel=()=>Math.max(...['woodcutting','mining','fishing'].map(k=>state.prestige[k]?99:level(k)));
-const toolTier=sk=>{const L=level(sk);let a=TOOL_TIERS[0];for(const x of TOOL_TIERS)if(x.lvl<=L)a=x;return a;};
+const toolTier=sk=>{const L=level(sk);let a=TOOL_TIERS[0];for(const x of TOOL_TIERS)if(x.lvl<=L&&gearOk(sk,x.lvl))a=x;return a;};
 // Every skill's equipment upgrades through the same nine tiers as its level rises.
 const TOOL_NAMES={
   fishing:['Twig rod','Bamboo rod','Oak rod','Fly rod','Reinforced rod','Mithril rod','Rune rod','Dragon rod','Crystal rod'],
@@ -2174,7 +2219,7 @@ function renderSkill(){
   <div class="row"><span>${sv==='smithing'?'Furnace':sv==='cooking'?'Cookware':proSkill(sv)?'Equipment':'Tool'}</span><span class="v">${spd}</span></div>
   <p class="hint" style="text-align:left">${proSkill(sv)?`${PRO_HINT[sv]} Equipment improves as your level rises. Reach 99 for this skill's hat, then prestige for medals.`:sv==='construction'?"Build each isle's hut with logs from that isle's trees. Chops its own logs when you run out. Every 20% of a hut brings a villager who helps one of your skills. Your level follows overall progress and only reaches 99 when every hut is finished. Prestiging tears the huts down to build again; your villagers stay, but no new ones move in.":`${dep}${sv==='smithing'?'Smith at the furnace. ':sv==='cooking'?'Cook in the kitchen in your cabin on Greenhaven. ':''}Better equipment works lower-tier resources faster. Reach 99 to earn this skill's hat, then prestige back to level 1 for a medal, up to ${MAX_PRESTIGE} times.`}</p>
   ${locked(sv)?'<button class="btn go" id="sk-pro">Unlock with RatIdle Pro</button>':''}
-  ${resourceRows(sv)}`;
+  ${resourceRows(sv)}${synergyHtml(sv)}`;
   const spb=$('#sk-pro');if(spb)spb.onclick=()=>proPrompt(SKILLS[sv].name);
   $('#tab-skill').querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{const k=b.dataset.sk;if(needPro(k))return;skillView=k;renderSkill();});
   const pb=$('#sk-prestige');let armed=false;
@@ -2211,11 +2256,11 @@ function renderOpts(){
   <p class="hint">${IS_TOUCH?'Tap: walk / act · Long-press: options<br>Drag: turn camera · Pinch: zoom':'Left-click: walk / act · Right-click: options<br>Drag, middle-drag or arrow keys: rotate<br>Scroll or +/−: zoom · Shift-click item: drop'}</p>
   <button class="btn" id="o-tut">Replay tutorial</button>
   <p class="sect">RatIdle Pro</p>
-  <p class="hint">${PRO.available||PRO.pro?proStatus():'Twelve more skills are part of RatIdle Pro, a one-time purchase in the RatIdle app for iPhone and iPad.'}</p>
+  <p class="hint">${proStatus()}</p>
   ${PRO.pro?`<label class="opt" for="o-eat"><span>Eat food when hurt</span><input type="checkbox" id="o-eat" ${s.autoEat?'checked':''}></label>
   <label class="opt" for="o-drink"><span>AUTO drinks potions</span><input type="checkbox" id="o-drink" ${s.autoDrink?'checked':''}></label>`:''}
   ${PRO.available?`${PRO.pro?'<button class="btn" id="o-pro-manage">Purchase help</button>':'<button class="btn go" id="o-pro">Unlock RatIdle Pro</button>'}
-  <button class="btn" id="o-pro-restore">Restore purchases</button>`:''}
+  <button class="btn" id="o-pro-restore">Restore purchases</button>`:PRO.pro?'':proLinked()?'<button class="btn" id="o-pro-check">Check for RatIdle Pro</button>':CLOUD_ON?'<button class="btn" id="o-pro-cloud">Sign in to cloud saves</button>':''}
   <p class="sect">Save · slot ${slot||'—'}</p>
   <button class="btn" id="o-export">Export save (JSON)</button>
   <button class="btn" id="o-import">Import save into this slot</button>
@@ -2241,6 +2286,8 @@ function renderOpts(){
   const oc=$('#o-cloud');if(oc)oc.onclick=()=>openCloud();
   const oe=$('#o-eat');if(oe)oe.onchange=e=>{s.autoEat=e.target.checked;save();};
   const od=$('#o-drink');if(od)od.onchange=e=>{s.autoDrink=e.target.checked;save();};
+  const pc=$('#o-pro-check');if(pc)pc.onclick=()=>{pc.disabled=true;pc.textContent='Checking...';syncProAccount(true,true);};
+  const pl=$('#o-pro-cloud');if(pl)pl.onclick=()=>openCloud();
   for(const [id,action] of [['#o-pro','paywall'],['#o-pro-manage','manage'],['#o-pro-restore','restore']]){
     const b=$(id);if(b)b.onclick=()=>native({type:'pro',action});}
   const rb=$('#o-reset');let armed=false;
@@ -2916,7 +2963,11 @@ function levelUp(sk,from,to){
   else if(sk==='construction'&&to<99){if(sub)banner(`${S.name} level ${to}!`,sub);return;}
   if(to>=99&&!state.hats.includes(sk)){state.hats.push(sk);applyOutfit();msg(`You've mastered ${S.name}! A ${S.name} hat now sits on your head${state.hats.length>1?', stacked on your others':''}.`,'m-green');banner(`${S.name} 99!`,'You earned the '+S.name+' hat.');}
   else banner(`${S.name} level ${to}!`,sub);
-  for(let i=0;i<20;i++){const a=rand(0,6.28);spawnPart(player.x,player.y+2.2,player.z,['#ffe040','#ff8030','#ffffff'][i%3],Math.cos(a)*2.5,rand(2,5),Math.sin(a)*2.5,1.1,4);}
+  for(let i=0;i<20;i++){const a=rand(0,6.28),c=['#ffe040','#ff8030','#ffffff'][i%3];spawnPart(player.x,player.y+2.2,player.z,c,Math.cos(a)*2.5,rand(2,5),Math.sin(a)*2.5,1.1,4);}
+  // Smithing, Fletching and Runecrafting levels can unlock gear for the combat skills that depend on them.
+  for(const [g,need] of Object.entries(GEAR_NEEDS))if(need===sk&&!locked(g)){const t=TOOL_TIERS.filter(x=>x.lvl<=level(g));
+    const nx=t.find(x=>Math.ceil(x.lvl/2)>from&&Math.ceil(x.lvl/2)<=to);if(nx&&toolTier(g)===nx)msg(`Your ${S.name} level lets you use better ${SKILLS[g].name} gear: ${esc(toolName(g))}.`,'m-green');}
+  refreshTools();
 }
 
 /* ================= FURNITURE PLACEMENT ================= */
@@ -3540,6 +3591,7 @@ function monsterHit(m){
   hurt(Math.max(1,Math.round(randi(1,m.def.max)*(1-toolIdx('block')*.04))));
 }
 let foodWarned=false;
+const healOf=id=>Math.round(ITEMS[id].heal*(1+synBoost('heal','health')));
 function hurt(dmg){
   state.hp=Math.max(0,state.hp-dmg);splat(player.x,player.y+2.3,player.z,String(dmg),'#c81818');updateHud();
   if(state.hp<=0){knockedOut();return;}
@@ -3557,8 +3609,8 @@ function eatFood(auto){
   const need=maxHp()-state.hp;if(need<=0)return false;
   const fs=Object.keys(ITEMS).filter(id=>ITEMS[id].heal&&countOwned(id)>0).sort((a,b)=>ITEMS[a].heal-ITEMS[b].heal);
   if(!fs.length){if(auto&&!foodWarned){foodWarned=true;msg("You're out of food! Cook some fish or grow some crops to heal in fights.",'m-red');}else if(!auto)msg('You have no food.');return false;}
-  const id=fs.find(f=>ITEMS[f].heal>=need)||fs[fs.length-1];consume(id,1,false);foodWarned=false;
-  state.hp=Math.min(maxHp(),state.hp+ITEMS[id].heal);msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${ITEMS[id].heal} health.`,'m-green');
+  const id=fs.find(f=>healOf(f)>=need)||fs[fs.length-1];consume(id,1,false);foodWarned=false;
+  state.hp=Math.min(maxHp(),state.hp+healOf(id));msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${healOf(id)} health.`,'m-green');
   updateHud();if(activeTab==='bank')renderBank();return true;
 }
 
@@ -3690,6 +3742,7 @@ function doCraft(a){
   const r=a.recipe;if(craftable(r)<1){msg(`You have run out of materials for ${esc(craftName(r).toLowerCase())}.`);stopAction();return;}
   for(const [id,n] of r.inputs)consume(id,n,false);
   let q=r.out[1];if(r.skill==='runecrafting')q*=1+Math.floor((level('runecrafting')-r.lvl)/25);
+  if(r.skill==='fletching')q=Math.round(q*(1+synBoost('yield','fletching')));
   bankAdd(r.out[0],q);state.stats.made[r.out[0]]=(state.stats.made[r.out[0]]||0)+q;
   const nm=esc(ITEMS[r.out[0]].name.toLowerCase());
   if(r.verb==='Smith'){sfx.clink();msg(`You smith ${q} ${nm}. They go to your bank.`);}
@@ -3774,7 +3827,7 @@ function proBoost(kind,sk){
 }
 function drinkPotion(id,auto){
   if(needPro('alchemy'))return;const p=POTIONS[ITEMS[id].potion];if(countOwned(id)<1)return;
-  consume(id,1,false);const now=Date.now();state.buffs[id]=Math.min(now+POTION_MAX_MS,Math.max(now,state.buffs[id]||0)+p.min*60000);
+  consume(id,1,false);const now=Date.now();state.buffs[id]=Math.min(now+POTION_MAX_MS,Math.max(now,state.buffs[id]||0)+p.min*60000*(1+synBoost('duration','alchemy')));
   msg(`${auto?'AUTO drinks':'You drink'} the ${esc(p.name.toLowerCase())}. ${esc(p.say)} for ${clock(state.buffs[id]-now)}.`,'m-green');
   sfx.item();updateHud();if(activeTab==='bank')renderBank();if(activeTab==='skill')renderSkill();
 }
@@ -3819,6 +3872,7 @@ function autoPro(act){
     const s=FARM_SPOTS[1];if(Math.hypot(player.x-s.x,player.z-s.z-2.2)>2.5)walkTo(s.x,s.z+2.2);return;}
   const r=bestCraft(act);
   if(!r||autoMake(r)===false)proStuck('craft'+act+state.island,act==='magic'?`AUTO can't get jewellery and runes to enchant here. Smithing makes jewellery and Runecrafting makes runes.`
+    :act==='alchemy'?`AUTO needs ore, raw fish and a crop of the same tier to brew. Grow crops with Farming; AUTO gathers the rest on ${esc(I.name)}.`
     :`There's nothing on ${esc(I.name)} AUTO can make ${SKILLS[act].name.toLowerCase()} supplies from at your levels.`);
 }
 
@@ -3826,7 +3880,7 @@ function autoPro(act){
 // Time away for a Pro skill, worked out from rates rather than played out.
 function gatherDefFor(id){return gatherEnts().map(e=>e.def).find(d=>d.item===id)||(id==='rune_essence'?ESSENCE_ROCK:null);}
 function itemCost(id,depth=0){
-  const s=itemSource(id);if(!s||depth>3)return null;
+  const s=itemSource(id);if(!s)return countOwned(id)>0?0:null;if(depth>3)return null;
   if(s.sk){const d=gatherDefFor(id);return d?cycleFor(s.sk,d)/gatherChance(s.sk,d)/.55:null;}
   if(s.proc){const c=itemCost(s.proc.input,depth+1);return c==null?null:c*s.proc.n+CYCLE.smithing;}
   const c=craftCost(s.craft,depth+1);return c==null?null:c/s.craft.out[1];
@@ -3868,7 +3922,10 @@ function catchUpPro(act,secs,when){
     const q=n*4;bankAdd(c.id,q);bankAdd(c.seed,Math.floor(n*.5));xp.farming=n*c.plantXp+q*c.xp;state.stats.got[c.id]=(state.stats.got[c.id]||0)+q;
     line=`you grew ${q.toLocaleString()} ${esc(plural(c.name.toLowerCase()))}`;
   }else{
-    const r=bestCraft(act);if(!r)return;const cost=craftCost(r);if(!cost)return;n=Math.floor(secs*.3/cost);if(n<1)return;
+    const r=bestCraft(act);if(!r)return;const cost=craftCost(r);if(!cost)return;n=Math.floor(secs*.3/cost);
+    // Anything AUTO can't gather (farm crops) is used from what's banked, and limits how much gets made.
+    const stocked=r.inputs.filter(([id])=>!itemSource(id));for(const [id,need] of stocked)n=Math.min(n,Math.floor(countOwned(id)/need));
+    if(n<1)return;for(const [id,need] of stocked)consume(id,n*need,true);
     simulateCraft(r,n,xp);let q=n*r.out[1];if(r.skill==='runecrafting')q*=1+Math.floor((level('runecrafting')-r.lvl)/25);
     bankAdd(r.out[0],q);state.stats.made[r.out[0]]=(state.stats.made[r.out[0]]||0)+q;
     line=`you made ${q.toLocaleString()} ${esc(ITEMS[r.out[0]].name.toLowerCase())}${act==='runecrafting'?'s':''}, banked`;
@@ -3885,8 +3942,9 @@ function proPrompt(what){
   if(titleOpen)return;const price=PRO.price?` for ${esc(PRO.price)}`:'';
   modal('RatIdle Pro',`<p style="margin-top:0">${what?`<b>${esc(what)}</b> is`:'That is'} part of <b>RatIdle Pro</b>, a one-time purchase${price} that unlocks twelve more skills:</p>
     <p><b>Combat:</b> ${COMBAT.map(k=>SKILLS[k].name).join(', ')}.<br><b>And:</b> ${PRO_SKILLS.filter(k=>!COMBAT.includes(k)).map(k=>SKILLS[k].name).join(', ')}.</p>
-    <p class="hint">Your six base skills and everything you already have stay free.${PRO.available?'':' Get RatIdle Pro in the RatIdle app for iPhone and iPad.'}</p>`,
-    [...(PRO.available?[{label:'Unlock Pro',cls:'go',fn:()=>native({type:'pro',action:'paywall'})},{label:'Restore',fn:()=>native({type:'pro',action:'restore'})}]:[]),{label:'Not now'}]);
+    <p class="hint">Your six base skills and everything you already have stay free.${PRO.available?' Sign in to cloud saves with a verified email to take Pro to the website too.':` Get RatIdle Pro in the RatIdle app for iPhone and iPad, then sign in here to cloud saves with the same verified email.`}</p>`,
+    [...(PRO.available?[{label:'Unlock Pro',cls:'go',fn:()=>native({type:'pro',action:'paywall'})},{label:'Restore',fn:()=>native({type:'pro',action:'restore'})}]
+      :proLinked()?[{label:'Check again',cls:'go',fn:()=>syncProAccount(true,true)}]:CLOUD_ON?[{label:'Cloud saves',cls:'go',fn:()=>openCloud()}]:[]),{label:'Not now'}]);
 }
 function needPro(sk,quiet){if(!locked(sk))return false;if(!quiet)proPrompt(SKILLS[sk].name);return true;}
 // What each Pro skill shows in the Skills tab.
@@ -3899,6 +3957,7 @@ function proRows(sk){
     else if(sk==='magic')extra=tbl(RUNE_T.map((r,t)=>[esc(r[3]),LV[t],`${short(countOwned(runeId(t)))} runes`]))+tbl(CRAFTS.magic.map(r=>[esc(ITEMS[r.out[0]].name),r.lvl,`${short(state.stats.made[r.out[0]]||0)} made`]));
     return `<div class="row"><span>Combat level</span><span class="v">${cbLevel()}</span></div><div class="row"><span>Health</span><span class="v">${Math.ceil(state.hp)} / ${maxHp()}</span></div>
       ${gear.map(([a,b])=>`<div class="row"><span>${a}</span><span class="v">${esc(b)}</span></div>`).join('')}
+      ${nextGearHint(sk)}
       <p class="sect">Monsters</p>${tbl(MONSTERS.map(m=>[esc(m.name),m.lvl,`${short(state.stats.kills[m.id]||0)} defeated`]))}${extra}`;}
   if(sk==='alchemy')return tbl(POTIONS.map((p,t)=>[esc(p.name),LV[t],`${short(state.stats.made[p.id]||0)} made`]))
     +`<p class="sect">Active potions</p>${activeBuffs().map(p=>`<div class="row"><span>${esc(p.name)}</span><span class="v">${clock(state.buffs[p.id]-Date.now())}</span></div>`).join('')||'<p class="hint">None. Drink one from your pack or bank.</p>'}`;
@@ -3911,6 +3970,18 @@ function proRows(sk){
     return tbl(here.map(e=>[esc(thiefName(e)),thiefLvl(e),`${Math.round(thiefChance(e)*100)}% success`]))+`<div class="row"><span>Coins stolen</span><span class="v">${state.stats.stolen.toLocaleString()}</span></div>`;}
   return tbl(craftList(sk).map(r=>[esc(craftName(r)),r.lvl,`${short(state.stats.made[r.out[0]]||0)} made`]));
 }
+// What stands between a combat skill and its next piece of gear.
+function nextGearHint(sk){
+  const gk=MELEE.includes(sk)?sk:sk,L=level(gk),cur=TOOL_TIERS.indexOf(toolTier(gk)),nx=TOOL_TIERS[cur+1];if(!nx)return '';
+  const need=GEAR_NEEDS[gk],nl=Math.ceil(nx.lvl/2);
+  return `<p class="hint" style="text-align:left">Next${GEAR_SUFFIX[gk]}: ${esc(nx.n)} at ${SKILLS[gk].name} ${nx.lvl}${need?` and ${SKILLS[need].name} ${nl}`:''}${L>=nx.lvl&&need&&level(need)<nl?` <span class="no">(raise ${SKILLS[need].name})</span>`:''}.</p>`;
+}
+// The Skills tab's synergy list: what helps this skill, and what it helps.
+function synergyHtml(sk){
+  const row=(s,who)=>`<p class="hint" style="text-align:left;margin:2px 0"><b>${esc(SKILLS[who].name)}</b>${s.per?` <span class="ok">${synValue(s)}</span>`:''} ${esc(s.text)}${locked(s.from)?' <span class="no">(Pro)</span>':''}</p>`;
+  const by=SYNERGY.filter(s=>s.to&&s.to.includes(sk)&&s.from!==sk),helps=SYNERGY.filter(s=>s.from===sk);
+  return (by.length?`<p class="sect">Helped by</p>${by.map(s=>row(s,s.from)).join('')}`:'')+(helps.length?`<p class="sect">Helps</p>${helps.map(s=>row(s,s.from).replace(`<b>${esc(SKILLS[sk].name)}</b>`,`<b>${s.to?esc(s.to.map(k=>SKILLS[k].name).join(', ')):'Every skill'}</b>`)).join('')}`:'');
+}
 const PRO_HINT={
   attack:'Fight monsters in the arena north of the bank. Attack makes your melee hits land more often, and unlocks better swords.',
   strength:'Strength makes your melee hits harder, and unlocks better gauntlets.',
@@ -3918,7 +3989,7 @@ const PRO_HINT={
   health:'Health is your hit points. Every hit you land trains a little; fighting in the Health style trains it most. Food heals you in a fight.',
   ranged:'Shoot monsters from a distance with your shortbow. Each shot uses an arrow from Fletching.',
   magic:'Cast spells at monsters with runes from Runecrafting, or switch to enchanting in the Focus tab to enchant jewellery for Hazel.',
-  alchemy:'Brew potions at the alchemy table from ore and raw fish of the same tier. Potions buff every skill for a while.',
+  alchemy:'Brew potions at the alchemy table from ore, raw fish and a farm crop of the same tier. Potions buff every skill for a while.',
   farming:'Plant seeds in the three farm patches by the hut. Crops grow in real time and heal you in fights. Buy seeds in the Shop.',
   agility:'Build each isle\'s agility course one of three ways with gold and banked resources. Run it to train Agility; every course built gives a bonus on every isle.',
   thieving:'Pickpocket the traveller, the villagers and Hazel. Harder targets pay more. Better gloves, Fortune and Shadow potions and some courses raise your success.',
@@ -3930,13 +4001,13 @@ const FOCUS_HINT={attack:'Fights monsters in the arena, training Attack and Heal
   block:'Fights monsters in the arena, training Block and Health.',health:'Fights monsters, sharing XP between Attack, Strength, Block and Health.',
   ranged:'Shoots monsters in the arena with your best arrows. Fletch arrows first.',magic:'Casts spells at monsters in the arena with your runes.',
   enchant:'Smiths jewellery and crafts runes, then enchants the jewellery. Pays 25% more gold.',
-  alchemy:'Gathers ore and fish, then brews potions. Pays 25% more gold.',farming:'Plants, tends and harvests your farm patches.',
+  alchemy:'Gathers ore and fish, then brews potions with crops from your farm. Pays 25% more gold.',farming:'Plants, tends and harvests your farm patches.',
   agility:"Runs laps of this isle's agility course.",thieving:'Pickpockets the best target it can find.',
   runecrafting:'Mines rune essence, then crafts runes at the altar. Pays 25% more gold.',fletching:'Chops logs and smiths arrowtips, then fletches arrows. Pays 25% more gold.'};
 const focusHint=sk=>(sk==='magic'&&state.settings.magicMode==='enchant'?FOCUS_HINT.enchant:FOCUS_HINT[sk])+(locked(sk)?' <b>RatIdle Pro</b>':'');
 function eatItem(id){
   if(needPro('health'))return;if(state.hp>=maxHp()){msg("You're already at full health.");return;}
-  consume(id,1,false);state.hp=Math.min(maxHp(),state.hp+ITEMS[id].heal);msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${ITEMS[id].heal} health.`,'m-green');updateHud();
+  consume(id,1,false);state.hp=Math.min(maxHp(),state.hp+healOf(id));msg(`You eat the ${esc(ITEMS[id].name.toLowerCase())}. It heals ${healOf(id)} health.`,'m-green');updateHud();
 }
 // Health comes back slowly on its own: one point every six seconds.
 function regenHp(){
@@ -4255,7 +4326,27 @@ let cloud=(()=>{let c=null;try{const r=localStorage.getItem(CLOUD_KEY);if(r&&r.l
   return{device:typeof c.device==='string'&&/^[a-z0-9]{8,24}$/.test(c.device)?c.device:Math.random().toString(36).slice(2,12)+Date.now().toString(36),
     ...(typeof c.off==='boolean'&&!user?{off:c.off}:user?{off:false}:{}),user,links};})();
 let cloudTok=null,cloudBusy=false,cloudFailAt=0,cloudConflict={},nativeActive=true;
-function storeCloud(){try{localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}catch(e){}native({type:'cloud',data:cloud});}
+function storeCloud(){try{localStorage.setItem(CLOUD_KEY,JSON.stringify(cloud));}catch(e){}native({type:'cloud',data:cloud});syncProAccount();}
+cloudReady=true;
+// RatIdle Pro follows the cloud-save account, once its email is verified. The app signs in to RevenueCat as the
+// account (so a purchase made on the phone belongs to it), and every device asks RevenueCat whether the account owns
+// Pro. The key is RevenueCat's public iOS SDK key, which is meant to ship inside the app anyway.
+const RC_PUBLIC_KEY='appl_OZiJpYghndmTRKqrWCnzJKsdYSE',PRO_RECHECK=10*60e3;
+function proLinked(){return CLOUD_ON&&!!cloud.user&&cloud.user.verified&&!cloud.off;}
+let proUserSent,proCheckAt=0,proChecking=false;
+function syncProAccount(force,say){
+  const uid=proLinked()?cloud.user.uid:null;
+  if(uid!==proUserSent){proUserSent=uid;native({type:'proUser',uid});}
+  if(!uid||proChecking||!force&&accountPro&&accountPro.uid===uid&&Date.now()-proCheckAt<PRO_RECHECK){applyPro();return;}
+  proChecking=true;
+  fetch('https://api.revenuecat.com/v1/subscribers/'+encodeURIComponent(uid),{headers:{Authorization:'Bearer '+RC_PUBLIC_KEY,'X-Platform':'ios'}})
+    .then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{
+      const e=j&&j.subscriber&&j.subscriber.entitlements&&j.subscriber.entitlements.ratidle_pro;
+      accountPro={uid,pro:!!e&&(!e.expires_date||Date.parse(e.expires_date)>Date.now())};proCheckAt=Date.now();
+      try{localStorage.setItem(PRO_ACCT_KEY,JSON.stringify(accountPro));}catch(err){}
+      applyPro(say?(accountPro.pro?'RatIdle Pro is unlocked on your cloud-save account.':'Your cloud-save account has no RatIdle Pro yet. Buy it in the app while signed in with this email.'):'');
+    },()=>{if(say)msg('Could not check RatIdle Pro right now. Try again later.','m-red');applyPro();}).finally(()=>{proChecking=false;});
+}
 const linkFor=n=>{const l=cloud.links[n];return l&&cloud.user&&l.uid===cloud.user.uid?l:null;};
 // A slot whose local game was replaced (new game, import, delete) must not overwrite its old cloud copy unasked.
 function unlinkCloud(n){if(cloud.links[n]){delete cloud.links[n];storeCloud();}delete cloudConflict[n];}
@@ -4466,6 +4557,7 @@ let resetting=false;
 function start(data){
   state=freshState();applyState(state);resize();
   window.__ratidleSave=save;setInterval(save,8000);
+  syncProAccount();setInterval(()=>{if(!document.hidden)syncProAccount();},PRO_RECHECK);
   addEventListener('beforeunload',()=>save());
   document.addEventListener('visibilitychange',()=>{if(document.hidden)save();});
   lastWall=Date.now();requestAnimationFrame(t=>{last=t;frame(t);});
