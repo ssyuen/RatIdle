@@ -45,5 +45,6 @@ skipped during a focus timer. Each upload only goes through if the cloud copy is
 restored, so a second device never silently overwrites the first; the player picks which to keep in the Cloud window.
 Restores are sanitized like any import.
 
-RatIdle Pro (see `mobile/README.md`) is tied to the cloud-save account too: bought in the app while signed in with a
-verified email, it unlocks on the website and any other device signed in to that account.
+RatIdle Pro (see `mobile/README.md`) is tied to the cloud-save account too: bought in the app or on the website (through
+RevenueCat Web Billing and Stripe) while signed in with a verified email, it unlocks on every device signed in to that
+account.

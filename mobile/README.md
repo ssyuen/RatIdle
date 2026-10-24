@@ -92,8 +92,16 @@ need Runecrafting, and every potion needs a farm crop.
 in to RevenueCat as their Firebase user ID (`setAppUser` in `src/purchases.ts`), so a purchase made on the phone
 belongs to the account. Every device signed in to that account, the website included, asks RevenueCat whether the
 account owns `ratidle_pro` (`syncProAccount` in the game) and unlocks Pro if it does. Without a verified email and
-cloud saves, Pro stays on the device that bought it. The website can't sell Pro: there's no Stripe account linked to
-RevenueCat for Web Billing yet.
+cloud saves, Pro stays on the device that bought it.
+
+**Buying on the website.** The website sells the same $4.99 unlock through RevenueCat Web Billing, which runs the
+checkout on the RatIdle Stripe account (connected in RevenueCat) and grants `ratidle_pro` to the cloud-save account.
+RevenueCat's web SDK (`@revenuecat/purchases-js`) loads from jsdelivr only when someone presses Buy (`buyProWeb` in
+the game). There's no server or webhook of our own: RevenueCat creates the payment in Stripe and handles Stripe's
+webhooks. The web product is `ratidle_pro_lifetime_web` in the RevenueCat "RatIdle (Web)" app, in the same
+`$rc_lifetime` package. When the game runs from `localhost` or a file it uses the sandbox key, so purchases go to
+Stripe test mode (card 4242 4242 4242 4242); the live site always uses the production key. The app never links to
+the web checkout, as Apple requires.
 
 Options › RatIdle Pro opens RevenueCat's paywall, the Customer Center (restores and refund requests) or a restore.
 The app holds the entitlement and passes it to the game, see `src/purchases.ts`; the game reads it as `PRO.pro`.

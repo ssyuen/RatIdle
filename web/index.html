@@ -414,7 +414,7 @@ function proStatus(){
   const acct=CLOUD_ON&&cloud.user?esc(cloud.user.email):'';
   if(PRO.pro)return `You have RatIdle Pro. Thank you!${!PRO.native&&acct?` It comes with your cloud-save account, ${acct}.`:PRO.available&&!proLinked()?' Sign in to cloud saves with a verified email to use it on the website too.':''}`;
   if(PRO.available)return `Unlock twelve more skills (six for combat, plus Alchemy, Farming, Agility, Thieving, Runecrafting and Fletching) with a one-time purchase${PRO.price?` of ${esc(PRO.price)}`:''}.`;
-  return `Twelve more skills are part of RatIdle Pro, a one-time purchase in the RatIdle app for iPhone and iPad. ${proLinked()?`Buy it there while signed in to cloud saves as ${acct} and it unlocks here too.`:'Buy it there, then sign in here to cloud saves with the same verified email to play it on the website.'}`;
+  return `Unlock twelve more skills with RatIdle Pro, a one-time purchase. ${proLinked()?`It belongs to your cloud-save account, ${acct}, so it unlocks here and in the RatIdle app for iPhone and iPad.`:'Buy it here or in the RatIdle app while signed in to cloud saves with a verified email, and it unlocks everywhere you sign in.'}`;
 }
 // Height of the game area: the full screen when installed to the home screen (see the <head> script), else the window.
 let VH=innerHeight;
@@ -2265,7 +2265,7 @@ function renderOpts(){
   ${PRO.pro?`<label class="opt" for="o-eat"><span>Eat food when hurt</span><input type="checkbox" id="o-eat" ${s.autoEat?'checked':''}></label>
   <label class="opt" for="o-drink"><span>AUTO drinks potions</span><input type="checkbox" id="o-drink" ${s.autoDrink?'checked':''}></label>`:''}
   ${PRO.available?`${PRO.pro?'<button class="btn" id="o-pro-manage">Purchase help</button>':'<button class="btn go" id="o-pro">Unlock RatIdle Pro</button>'}
-  <button class="btn" id="o-pro-restore">Restore purchases</button>`:PRO.pro?'':proLinked()?'<button class="btn" id="o-pro-check">Check for RatIdle Pro</button>':CLOUD_ON?'<button class="btn" id="o-pro-cloud">Sign in to cloud saves</button>':''}
+  <button class="btn" id="o-pro-restore">Restore purchases</button>`:PRO.pro||!CLOUD_ON?'':`<button class="btn go" id="o-pro-web">Buy RatIdle Pro</button>${proLinked()?'<button class="btn" id="o-pro-check">Already bought it? Check again</button>':''}`}
   <p class="sect">Save · slot ${slot||'—'}</p>
   <button class="btn" id="o-export">Export save (JSON)</button>
   <button class="btn" id="o-import">Import save into this slot</button>
@@ -2292,7 +2292,7 @@ function renderOpts(){
   const oe=$('#o-eat');if(oe)oe.onchange=e=>{s.autoEat=e.target.checked;save();};
   const od=$('#o-drink');if(od)od.onchange=e=>{s.autoDrink=e.target.checked;save();};
   const pc=$('#o-pro-check');if(pc)pc.onclick=()=>{pc.disabled=true;pc.textContent='Checking...';syncProAccount(true,true);};
-  const pl=$('#o-pro-cloud');if(pl)pl.onclick=()=>openCloud();
+  const pw=$('#o-pro-web');if(pw)pw.onclick=()=>buyProWeb();
   for(const [id,action] of [['#o-pro','paywall'],['#o-pro-manage','manage'],['#o-pro-restore','restore']]){
     const b=$(id);if(b)b.onclick=()=>native({type:'pro',action});}
   const rb=$('#o-reset');let armed=false;
@@ -3947,9 +3947,9 @@ function proPrompt(what){
   if(titleOpen)return;const price=PRO.price?` for ${esc(PRO.price)}`:'';
   modal('RatIdle Pro',`<p style="margin-top:0">${what?`<b>${esc(what)}</b> is`:'That is'} part of <b>RatIdle Pro</b>, a one-time purchase${price} that unlocks twelve more skills:</p>
     <p><b>Combat:</b> ${COMBAT.map(k=>SKILLS[k].name).join(', ')}.<br><b>And:</b> ${PRO_SKILLS.filter(k=>!COMBAT.includes(k)).map(k=>SKILLS[k].name).join(', ')}.</p>
-    <p class="hint">Your six base skills and everything you already have stay free.${PRO.available?' Sign in to cloud saves with a verified email to take Pro to the website too.':` Get RatIdle Pro in the RatIdle app for iPhone and iPad, then sign in here to cloud saves with the same verified email.`}</p>`,
+    <p class="hint">Your six base skills and everything you already have stay free. Signed in to cloud saves with a verified email, Pro unlocks on the website and in the app alike.</p>`,
     [...(PRO.available?[{label:'Unlock Pro',cls:'go',fn:()=>native({type:'pro',action:'paywall'})},{label:'Restore',fn:()=>native({type:'pro',action:'restore'})}]
-      :proLinked()?[{label:'Check again',cls:'go',fn:()=>syncProAccount(true,true)}]:CLOUD_ON?[{label:'Cloud saves',cls:'go',fn:()=>openCloud()}]:[]),{label:'Not now'}]);
+      :CLOUD_ON?[{label:'Buy RatIdle Pro',cls:'go',fn:()=>buyProWeb()},...(proLinked()?[{label:'Check again',fn:()=>syncProAccount(true,true)}]:[])]:[]),{label:'Not now'}]);
 }
 function needPro(sk,quiet){if(!locked(sk))return false;if(!quiet)proPrompt(SKILLS[sk].name);return true;}
 // What each Pro skill shows in the Skills tab.
@@ -4337,6 +4337,32 @@ cloudReady=true;
 // account (so a purchase made on the phone belongs to it), and every device asks RevenueCat whether the account owns
 // Pro. The key is RevenueCat's public iOS SDK key, which is meant to ship inside the app anyway.
 const RC_PUBLIC_KEY='appl_OZiJpYghndmTRKqrWCnzJKsdYSE',PRO_RECHECK=10*60e3;
+// Buying Pro on the website: RevenueCat Web Billing runs the checkout on our Stripe account and grants ratidle_pro to
+// the cloud-save account, so it unlocks in the app too. Its SDK only loads when someone goes to buy. The sandbox key
+// (Stripe test mode) is only used when the game runs locally, so the live site never takes test payments.
+const RC_WEB_LOCAL=location.protocol==='file:'||/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const RC_WEB_KEY=RC_WEB_LOCAL?'rcb_sb_ohFiNPIXKUShDoXygdFAEqutp':'rcb_ftlNhEapAATvgcVnuuyRUhNpkzfC';
+const RC_WEB_SDK='https://cdn.jsdelivr.net/npm/@revenuecat/purchases-js@1.73.1/+esm';
+let rcWeb=null,rcWebBusy=false;
+async function buyProWeb(){
+  if(RN||rcWebBusy)return;
+  if(!proLinked()){modal('RatIdle Pro',`<p style="margin-top:0">RatIdle Pro belongs to your cloud-save account, so it also unlocks in the RatIdle app when you sign in there.</p>
+    <p>${cloud.user?'Verify your email first, then come back here.':'Sign in to cloud saves (or create an account) and verify your email first.'}</p>`,[{label:'Cloud saves',cls:'go',fn:()=>openCloud()},{label:'Not now'}]);return;}
+  const uid=cloud.user.uid;let sdk=null;rcWebBusy=true;$('#modal').hidden=true;
+  try{
+    sdk=await import(RC_WEB_SDK);
+    if(!rcWeb)rcWeb=sdk.Purchases.configure({apiKey:RC_WEB_KEY,appUserId:uid});else if(rcWeb.getAppUserId()!==uid)await rcWeb.changeUser(uid);
+    const off=(await rcWeb.getOfferings()).current,pkg=off&&(off.lifetime||off.availablePackages[0]);
+    if(!pkg)throw 'RatIdle Pro is not for sale on the website right now.';
+    const res=await rcWeb.purchase({rcPackage:pkg,customerEmail:cloud.user.email});
+    const owns=!!res.customerInfo.entitlements.active.ratidle_pro;
+    accountPro={uid,pro:owns};proCheckAt=Date.now();try{localStorage.setItem(PRO_ACCT_KEY,JSON.stringify(accountPro));}catch(err){}
+    applyPro(owns?`Thank you! RatIdle Pro is unlocked on ${esc(cloud.user.email)}, here and in the app.`:'');
+  }catch(e){
+    if(sdk&&e&&e.errorCode===sdk.ErrorCode.UserCancelledError)return;
+    msg(typeof e==='string'?e:'The purchase did not go through. You were not charged; try again in a moment.','m-red');
+  }finally{rcWebBusy=false;}
+}
 function proLinked(){return CLOUD_ON&&!!cloud.user&&cloud.user.verified&&!cloud.off;}
 let proUserSent,proCheckAt=0,proChecking=false;
 function syncProAccount(force,say){
