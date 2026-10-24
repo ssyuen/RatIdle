@@ -79,6 +79,8 @@ input[type=file]{font:12px var(--font);color:var(--text);max-width:100%;margin-t
 #title .tbox{width:min(440px,100%);background:var(--stone-2);border:3px solid var(--stone-0);box-shadow:inset 0 0 0 2px var(--stone-3),0 10px 40px rgba(0,0,0,.5);padding:16px 16px 12px}
 #title h1{margin:0;text-align:center;font:600 44px var(--font);color:var(--gold);text-shadow:3px 3px 0 #000,0 0 18px rgba(255,152,31,.35);letter-spacing:.02em}
 #title .tsub{text-align:center;color:var(--muted);margin:2px 0 12px;font-size:13px;text-shadow:1px 1px 0 #000}
+#title .tfoot{text-align:center;color:var(--muted);margin:10px 0 0;font-size:11px;line-height:1.5;text-shadow:1px 1px 0 #000}
+#title .tfoot a{color:var(--gold)}
 .slot-card{background:var(--stone-1);border:2px solid var(--stone-0);box-shadow:inset 0 0 0 1px var(--stone-3);padding:8px 10px;margin-bottom:8px}
 .slot-card .sh{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .slot-card .sn{color:var(--gold);font-weight:600;font-size:15px;text-shadow:1px 1px 0 #000}
@@ -361,7 +363,10 @@ body.touch #focuspill{padding:6px 14px 7px}
 <div id="tut" hidden><div id="tut-hl" hidden></div><div id="tut-card" role="dialog" aria-modal="true" aria-labelledby="tut-title"><div class="ts" id="tut-step"></div><h2 id="tut-title"></h2><div class="body" id="tut-body"></div><div class="btns" id="tut-btns"></div></div></div>
 <div id="fade"></div>
 <div id="title" hidden><div class="tbox"><h1>RatIdle</h1><p class="tsub">A cosy skilling game for focused work</p><div id="slots"></div>
-  <p class="hint">Each slot is a separate game. Export a save, or use cloud saves, to back it up or move it to another device.</p><div id="t-cloudbox"></div></div></div>
+  <p class="hint">Each slot is a separate game. Export a save, or use cloud saves, to back it up or move it to another device.</p><div id="t-cloudbox"></div>
+  <p class="tfoot">Free to play. <b>RatIdle Pro</b>, a one-time US$4.99 unlock of twelve more skills, is optional.<br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms &amp; refunds</a> · <a href="mailto:samuel.s.yuen@gmail.com">Contact</a></p></div></div>
+<script>// The app bundles this page and sells Pro through Apple, so the website's price and legal links stay off it.
+if(location.hostname==='ratidle.local')document.querySelector('#title .tfoot').remove();</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
