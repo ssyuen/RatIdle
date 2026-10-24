@@ -29,8 +29,10 @@ jobs:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         run: |
           if [ -z "$FIREBASE_API_KEY" ]; then echo "::error::Set the FIREBASE_API_KEY repository secret."; exit 1; fi
-          grep -q "'__FIREBASE_API_KEY__'" web/index.html
-          sed -i "s|'__FIREBASE_API_KEY__'|'${FIREBASE_API_KEY}'|" web/index.html
+          for f in web/index.html web/auth-action.html; do
+            grep -q "'__FIREBASE_API_KEY__'" "$f"
+            sed -i "s|'__FIREBASE_API_KEY__'|'${FIREBASE_API_KEY}'|" "$f"
+          done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
