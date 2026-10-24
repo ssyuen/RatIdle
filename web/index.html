@@ -188,7 +188,16 @@ input[type=range]{width:100%;accent-color:#c8901c}
 .reward b{color:var(--yellow)} .reward .g{color:var(--gold)}
 /* RatIdle Pro: locked skills, damage numbers */
 .skchip.lock{opacity:.55;position:relative}.skchip.lock::after{content:"\1F512";position:absolute;right:1px;top:0;font-size:9px}
-.skrow.lock{opacity:.62}
+.sktiles{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:4px 0}
+.sktile{position:relative;display:flex;align-items:center;gap:3px;height:40px;padding:2px 4px;background:linear-gradient(#4a4034,#2e271e);border:2px solid var(--stone-0);box-shadow:inset 0 0 0 1px var(--stone-3);cursor:pointer;font:inherit;color:inherit}
+.sktile img{width:30px;height:27px;image-rendering:pixelated;flex:none}
+.sktile .lv{flex:1;text-align:right;font:600 15px var(--font);color:var(--yellow);text-shadow:1px 1px 0 #000;line-height:1;font-variant-numeric:tabular-nums}
+.sktile .lv small{display:block;font-size:10px;color:var(--muted);font-weight:400}
+.sktile .xb{position:absolute;left:3px;right:3px;bottom:2px;height:2px;background:var(--bar-bg)}.sktile .xb i{display:block;height:100%;background:var(--bar)}
+.sktile .st{position:absolute;left:3px;top:0;font-size:10px}
+.sktile.sel{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.sktile.lock{filter:grayscale(1) brightness(.6)}
+.sktile.lock::after{content:"\1F512";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;filter:none;text-shadow:0 0 3px #000}
 .splat{position:fixed;transform:translate(-50%,-50%);z-index:3;pointer-events:none;color:#fff;font:600 13px var(--font);padding:0 6px;border-radius:9px;border:1px solid #000;text-shadow:1px 1px 0 #000;animation:splat .9s ease-out forwards}
 @keyframes splat{from{transform:translate(-50%,-50%)}to{transform:translate(-50%,-170%);opacity:0}}
 /* chat */
@@ -2137,8 +2146,11 @@ function renderSkill(){
   const C=charLevel(),cc=charXpFor(C),cn=charXpFor(C+1),cpct=(state.fxp-cc)/(cn-cc)*100;
   const total=SKILL_ORDER.reduce((a,s)=>a+level(s),0);
   const rows=SKILL_ORDER.map(sk=>{const L=level(sk),xp=state.skills[sk],cur=XP_TABLE[L-1],next=L<99?XP_TABLE[L]:xp,pct=sk==='construction'?buildAvg()*100:L<99?(xp-cur)/(next-cur)*100:100;
-    return (sk==='attack'?'<p class="bgrp">Combat · RatIdle Pro</p>':sk==='alchemy'?'<p class="bgrp">More skills · RatIdle Pro</p>':'')+
-      `<button class="skrow ${skillView===sk?'sel':''}${locked(sk)?' lock':''}" data-sk="${sk}"><img alt="" src="${iconURL(SKILLS[sk].icon)}"><div class="meta"><div class="nm"><span>${SKILLS[sk].name}${locked(sk)?' 🔒':''}${state.prestige[sk]?` <span style="color:${MEDALS[state.prestige[sk]-1].c}" title="${MEDALS[state.prestige[sk]-1].name} medal">★</span>`:''}</span><b>${L}</b></div><div class="bar thin"><i style="width:${pct.toFixed(1)}%"></i></div></div></button>`;}).join('');
+    // A grid of tiles, like the skills window it's modelled on. Locked Pro skills are greyed out under a padlock.
+    const lk=locked(sk),pm=state.prestige[sk];
+    return `<button class="sktile ${skillView===sk&&!lk?'sel':''}${lk?' lock':''}" data-sk="${sk}" title="${SKILLS[sk].name}${lk?' · RatIdle Pro':''}" aria-label="${SKILLS[sk].name} level ${L}${lk?', locked':''}">
+      <img alt="" src="${iconURL(SKILLS[sk].icon)}">${pm?`<span class="st" style="color:${MEDALS[pm-1].c}">★</span>`:''}<span class="lv">${L}<small>${lk?'Pro':'/ 99'}</small></span><span class="xb"><i style="width:${pct.toFixed(1)}%"></i></span></button>`;}).join('');
+  if(locked(skillView))skillView='woodcutting';
   const sv=skillView,L=level(sv),xp=state.skills[sv],pr=state.prestige[sv]||0;
   const dep=sv==='smithing'?'Uses ore from Mining. ':sv==='cooking'?'Uses raw fish from Fishing. ':sv==='construction'?'Uses logs from Woodcutting. ':'';
   const spd=toolName(sv);
@@ -2150,7 +2162,9 @@ function renderSkill(){
   <div class="row"><span>Pets</span><span class="v">${PET_ORDER.filter(id=>state.pets[id]).map(id=>PETS[id].name).join(', ')||'—'}</span></div>
   <div class="row"><span>Medals</span><span class="v">${SKILL_ORDER.filter(k=>state.prestige[k]).map(k=>`${SKILLS[k].name} ${MEDALS[state.prestige[k]-1].name}`).join(', ')||'—'}</span></div>
   <div class="row"><span>Renown</span><span class="v">${SKILL_ORDER.reduce((a,k)=>a+renownFor(state.prestige[k]||0),0).toLocaleString()}</span></div>
-  <p class="sect">Skills · total ${total}</p>${rows}
+  <p class="sect">Skills</p><div class="sktiles">${rows}</div>
+  <div class="row"><span>Total level</span><span class="v">${total}</span></div>
+  ${PRO_SKILLS.some(locked)?'<p class="hint" style="margin-top:0">Tap a locked skill to unlock all twelve with RatIdle Pro.</p>':''}
   <p class="sect">${SKILLS[sv].name}</p>
   ${sv==='construction'?`<div class="row"><span>All huts</span><span class="v">${(buildAvg()*100).toFixed(1)}% built</span></div>
   <div class="row"><span>Villagers</span><span class="v">${ISLAND_ORDER.reduce((a,k)=>a+(state.npcs[k]||0),0)} / 25</span></div>`:`<div class="row"><span>XP</span><span class="v">${fmt(xp)}</span></div>
@@ -2162,7 +2176,7 @@ function renderSkill(){
   ${locked(sv)?'<button class="btn go" id="sk-pro">Unlock with RatIdle Pro</button>':''}
   ${resourceRows(sv)}`;
   const spb=$('#sk-pro');if(spb)spb.onclick=()=>proPrompt(SKILLS[sv].name);
-  $('#tab-skill').querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{skillView=b.dataset.sk;renderSkill();});
+  $('#tab-skill').querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{const k=b.dataset.sk;if(needPro(k))return;skillView=k;renderSkill();});
   const pb=$('#sk-prestige');let armed=false;
   if(pb)pb.onclick=()=>{if(!armed){armed=true;pb.textContent=`Click again: ${SKILLS[sv].name} goes back to level 1`;setTimeout(()=>{armed=false;if(pb.isConnected)pb.textContent=`Prestige to level 1 for ${an(MEDALS[pr].name)} medal`;},3000);return;}prestige(sv);};
 }

@@ -98,6 +98,9 @@ Set up in the RevenueCat dashboard:
    Debug builds warn in the console if it's missing.
 4. A paywall for that offering (Paywalls tab), and the Customer Center (Pro plan and up).
 
+The paywall's Terms and Privacy links, and the product's App Store privacy URL, point to `web/terms.html` and
+`web/privacy.html`, published with the website at https://ssyuen.github.io/RatIdle/terms.html and `/privacy.html`.
+
 ## How the app and game talk
 
 The game posts messages through `window.ReactNativeWebView`:
